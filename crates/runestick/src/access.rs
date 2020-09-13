@@ -13,7 +13,7 @@ const FLAG: isize = 1isize;
 const TAKEN: isize = (isize::max_value() ^ FLAG) >> 1;
 /// Panic if we reach this number of shared accesses and we try to add one more,
 /// since it's the largest we can support.
-const MAX_USES: isize = -(1 << 62);
+const MAX_USES: isize = -(1 << (isize::max_value().count_ones() - 2));
 
 /// An error raised while downcasting.
 #[derive(Debug, Error)]
