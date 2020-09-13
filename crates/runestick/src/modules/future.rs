@@ -6,7 +6,7 @@ use crate::{ContextError, Future, Module, Shared, Stack, Value, VmError, VmError
 /// Construct the `std::future` module.
 pub fn module() -> Result<Module, ContextError> {
     let mut module = Module::new(&["std", "future"]);
-    module.ty(&["Future"]).build::<Future>()?;
+    module.ty::<Future>()?;
     module.raw_fn(&["join"], raw_join)?;
     Ok(module)
 }
@@ -16,14 +16,14 @@ where
     I: IntoIterator<Item = &'a Value>,
     F: FnOnce(Vec<Value>) -> Value,
 {
-    use futures::StreamExt as _;
+    use futures_util::stream::StreamExt as _;
 
-    let mut futures = futures::stream::FuturesUnordered::new();
+    let mut futures = futures_util::stream::FuturesUnordered::new();
     let mut results = Vec::with_capacity(len);
 
     for (index, value) in values.into_iter().enumerate() {
         let future = match value {
-            Value::Future(future) => future.clone().owned_mut()?,
+            Value::Future(future) => future.clone().into_mut()?,
             value => return Err(VmError::bad_argument::<Future>(index, value)?),
         };
 

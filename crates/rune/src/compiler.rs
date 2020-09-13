@@ -14,7 +14,9 @@ use crate::{
     Assembly, CompileVisitor, LoadError, LoadErrorKind, Options, Resolve as _, Sources, Storage,
     UnitBuilder, Warnings,
 };
-use runestick::{CompileMeta, Context, Inst, Item, Label, Source, Span, TypeCheck};
+use runestick::{
+    CompileMeta, CompileMetaKind, Context, Inst, Item, Label, Source, Span, TypeCheck,
+};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
@@ -113,24 +115,37 @@ pub fn compile_with_options(
     worker.run()?;
     verify_imports(context, &mut *unit.borrow_mut())?;
 
-    while let Some(entry) = worker.query.queue.pop_front() {
-        let source_id = entry.source_id;
+    loop {
+        while let Some(entry) = worker.query.queue.pop_front() {
+            let source_id = entry.source_id;
 
-        if let Err(error) = compile_entry(CompileEntryArgs {
-            context,
-            options,
-            storage: &storage,
-            unit,
-            warnings: worker.warnings,
-            query: &mut worker.query,
-            entry,
-            expanded: &worker.expanded,
-            visitor,
-        }) {
-            return Err(LoadError::from(LoadErrorKind::CompileError {
-                source_id,
-                error,
-            }));
+            if let Err(error) = compile_entry(CompileEntryArgs {
+                context,
+                options,
+                storage: &storage,
+                unit,
+                warnings: worker.warnings,
+                query: &mut worker.query,
+                entry,
+                expanded: &worker.expanded,
+                visitor,
+            }) {
+                return Err(LoadError::from(LoadErrorKind::CompileError {
+                    source_id,
+                    error,
+                }));
+            }
+        }
+
+        match worker.query.queue_unused_entries(visitor) {
+            Ok(true) => (),
+            Ok(false) => break,
+            Err((source_id, error)) => {
+                return Err(LoadError::from(LoadErrorKind::CompileError {
+                    source_id,
+                    error,
+                }));
+            }
         }
     }
 
@@ -167,6 +182,7 @@ fn compile_entry(args: CompileEntryArgs<'_>) -> Result<(), CompileError> {
         build,
         source,
         source_id,
+        unused,
     } = entry;
 
     let mut asm = unit.borrow().new_assembly(source_id);
@@ -198,8 +214,12 @@ fn compile_entry(args: CompileEntryArgs<'_>) -> Result<(), CompileError> {
             compiler.contexts.push(span);
             compiler.compile((f.ast, false))?;
 
-            unit.borrow_mut()
-                .new_function(source_id, item, count, asm, f.call, args)?;
+            if unused {
+                compiler.warnings.not_used(source_id, span, None);
+            } else {
+                unit.borrow_mut()
+                    .new_function(source_id, item, count, asm, f.call, args)?;
+            }
         }
         Build::InstanceFunction(f) => {
             let args = format_fn_args(storage, &*source, f.ast.args.items.iter().map(|(a, _)| a))?;
@@ -218,8 +238,8 @@ fn compile_entry(args: CompileEntryArgs<'_>) -> Result<(), CompileError> {
                     item: f.impl_item.clone(),
                 })?;
 
-            let value_type =
-                meta.value_type()
+            let type_of =
+                meta.type_of()
                     .ok_or_else(|| CompileError::UnsupportedInstanceFunction {
                         meta: meta.clone(),
                         span,
@@ -227,16 +247,20 @@ fn compile_entry(args: CompileEntryArgs<'_>) -> Result<(), CompileError> {
 
             compiler.compile((f.ast, true))?;
 
-            unit.borrow_mut().new_instance_function(
-                source_id,
-                item,
-                value_type,
-                name.as_ref(),
-                count,
-                asm,
-                f.call,
-                args,
-            )?;
+            if unused {
+                compiler.warnings.not_used(source_id, span, None);
+            } else {
+                unit.borrow_mut().new_instance_function(
+                    source_id,
+                    item,
+                    type_of,
+                    name.as_ref(),
+                    count,
+                    asm,
+                    f.call,
+                    args,
+                )?;
+            }
         }
         Build::Closure(c) => {
             let args = format_fn_args(
@@ -250,8 +274,12 @@ fn compile_entry(args: CompileEntryArgs<'_>) -> Result<(), CompileError> {
             compiler.contexts.push(span);
             compiler.compile((c.ast, &c.captures[..]))?;
 
-            unit.borrow_mut()
-                .new_function(source_id, item, count, asm, c.call, args)?;
+            if unused {
+                compiler.warnings.not_used(source_id, span, None);
+            } else {
+                unit.borrow_mut()
+                    .new_function(source_id, item, count, asm, c.call, args)?;
+            }
         }
         Build::AsyncBlock(async_block) => {
             let span = async_block.ast.span();
@@ -259,14 +287,18 @@ fn compile_entry(args: CompileEntryArgs<'_>) -> Result<(), CompileError> {
             compiler.contexts.push(span);
             compiler.compile((&async_block.ast, &async_block.captures[..]))?;
 
-            unit.borrow_mut().new_function(
-                source_id,
-                item,
-                args,
-                asm,
-                async_block.call,
-                Vec::new(),
-            )?;
+            if unused {
+                compiler.warnings.not_used(source_id, span, None);
+            } else {
+                unit.borrow_mut().new_function(
+                    source_id,
+                    item,
+                    args,
+                    asm,
+                    async_block.call,
+                    Vec::new(),
+                )?;
+            }
         }
     }
 
@@ -367,6 +399,7 @@ impl<'a> Compiler<'a> {
 
         if let Some(meta) = self.context.lookup_meta(name) {
             log::trace!("found in context: {:?}", meta);
+            self.visitor.visit_meta(&meta, span);
             return Ok(Some(meta));
         }
 
@@ -376,8 +409,9 @@ impl<'a> Compiler<'a> {
             let current = base.join(name);
             log::trace!("lookup meta (query): {}", current);
 
-            if let Some(meta) = self.query.query_meta(&current, span)? {
+            if let Some(meta) = self.query.query_meta(&current)? {
                 log::trace!("found in query: {:?}", meta);
+                self.visitor.visit_meta(&meta, span);
                 return Ok(Some(meta));
             }
 
@@ -424,11 +458,9 @@ impl<'a> Compiler<'a> {
         needs: Needs,
     ) -> CompileResult<()> {
         log::trace!("CompileMeta => {:?} {:?}", meta, needs);
-        self.visitor.visit_meta(meta, span);
-
         if let Needs::Value = needs {
-            match meta {
-                CompileMeta::Tuple { tuple, .. } if tuple.args == 0 => {
+            match &meta.kind {
+                CompileMetaKind::Tuple { tuple, .. } if tuple.args == 0 => {
                     self.asm.push_with_comment(
                         Inst::Call {
                             hash: tuple.hash,
@@ -438,7 +470,7 @@ impl<'a> Compiler<'a> {
                         format!("tuple `{}`", tuple.item),
                     );
                 }
-                CompileMeta::TupleVariant {
+                CompileMetaKind::TupleVariant {
                     enum_item, tuple, ..
                 } if tuple.args == 0 => {
                     self.asm.push_with_comment(
@@ -450,14 +482,14 @@ impl<'a> Compiler<'a> {
                         format!("tuple variant `{}::{}`", enum_item, tuple.item),
                     );
                 }
-                CompileMeta::Tuple { tuple, .. } => {
+                CompileMetaKind::Tuple { tuple, .. } => {
                     self.asm.push_with_comment(
                         Inst::Fn { hash: tuple.hash },
                         span,
                         format!("tuple `{}`", tuple.item),
                     );
                 }
-                CompileMeta::TupleVariant {
+                CompileMetaKind::TupleVariant {
                     enum_item, tuple, ..
                 } => {
                     self.asm.push_with_comment(
@@ -466,14 +498,12 @@ impl<'a> Compiler<'a> {
                         format!("tuple variant `{}::{}`", enum_item, tuple.item),
                     );
                 }
-                CompileMeta::Function {
-                    value_type, item, ..
-                } => {
-                    let hash = **value_type;
+                CompileMetaKind::Function { type_of, item, .. } => {
+                    let hash = **type_of;
                     self.asm
                         .push_with_comment(Inst::Fn { hash }, span, format!("fn `{}`", item));
                 }
-                meta => {
+                _ => {
                     return Err(CompileError::UnsupportedValue {
                         span,
                         meta: meta.clone(),
@@ -484,14 +514,14 @@ impl<'a> Compiler<'a> {
             return Ok(());
         }
 
-        let value_type = meta
-            .value_type()
+        let type_of = meta
+            .type_of()
             .ok_or_else(|| CompileError::UnsupportedType {
                 span,
                 meta: meta.clone(),
             })?;
 
-        let hash = *value_type;
+        let hash = *type_of;
         self.asm.push(Inst::Type { hash }, span);
         Ok(())
     }
@@ -526,18 +556,22 @@ impl<'a> Compiler<'a> {
 
                 let false_label = self.asm.new_label("if_condition_false");
 
-                let mut scope = self.scopes.child(span)?;
-                self.compile((&*expr_let.expr, Needs::Value))?;
+                let scope = self.scopes.child(span)?;
+                let expected = self.scopes.push(scope);
 
-                let load = |_: &mut Assembly| {};
+                let load = |this: &mut Self, needs: Needs| {
+                    this.compile((&*expr_let.expr, needs))?;
+                    Ok(())
+                };
 
-                if self.compile_pat(&mut scope, &expr_let.pat, false_label, &load)? {
+                if self.compile_pat(&expr_let.pat, false_label, &load)? {
                     self.asm.jump(then_label, span);
                     self.asm.label(false_label)?;
                 } else {
                     self.asm.jump(then_label, span);
                 };
 
+                let scope = self.scopes.pop(expected, span)?;
                 Ok(scope)
             }
         }
@@ -546,18 +580,17 @@ impl<'a> Compiler<'a> {
     /// Encode a vector pattern match.
     pub(crate) fn compile_pat_vec(
         &mut self,
-        scope: &mut Scope,
         pat_vec: &ast::PatVec,
         false_label: Label,
-        load: &dyn Fn(&mut Assembly),
+        load: &dyn Fn(&mut Self, Needs) -> CompileResult<()>,
     ) -> CompileResult<()> {
         let span = pat_vec.span();
         log::trace!("PatVec => {:?}", self.source.source(span));
 
         // Assign the yet-to-be-verified tuple to an anonymous slot, so we can
         // interact with it multiple times.
-        load(&mut self.asm);
-        let offset = scope.decl_anon(span);
+        load(self, Needs::Value)?;
+        let offset = self.scopes.decl_anon(span)?;
 
         // Copy the temporary and check that its length matches the pattern and
         // that it is indeed a vector.
@@ -573,16 +606,20 @@ impl<'a> Compiler<'a> {
         );
 
         self.asm
-            .pop_and_jump_if_not(scope.local_var_count, false_label, span);
+            .pop_and_jump_if_not(self.scopes.local_var_count(span)?, false_label, span);
 
         for (index, (pat, _)) in pat_vec.items.iter().enumerate() {
             let span = pat.span();
 
-            let load = move |asm: &mut Assembly| {
-                asm.push(Inst::TupleIndexGetAt { offset, index }, span);
+            let load = move |this: &mut Self, needs: Needs| {
+                if needs.value() {
+                    this.asm.push(Inst::TupleIndexGetAt { offset, index }, span);
+                }
+
+                Ok(())
             };
 
-            self.compile_pat(scope, &*pat, false_label, &load)?;
+            self.compile_pat(&*pat, false_label, &load)?;
         }
 
         Ok(())
@@ -591,35 +628,30 @@ impl<'a> Compiler<'a> {
     /// Encode a vector pattern match.
     pub(crate) fn compile_pat_tuple(
         &mut self,
-        scope: &mut Scope,
         pat_tuple: &ast::PatTuple,
         false_label: Label,
-        load: &dyn Fn(&mut Assembly),
+        load: &dyn Fn(&mut Self, Needs) -> CompileResult<()>,
     ) -> CompileResult<()> {
         let span = pat_tuple.span();
         log::trace!("PatTuple => {:?}", self.source.source(span));
 
         // Assign the yet-to-be-verified tuple to an anonymous slot, so we can
         // interact with it multiple times.
-        load(&mut self.asm);
-        let offset = scope.decl_anon(span);
+        load(self, Needs::Value)?;
+        let offset = self.scopes.decl_anon(span)?;
 
         let type_check = if let Some(path) = &pat_tuple.path {
             let item = self.convert_path_to_item(path)?;
 
             let (tuple, meta, type_check) =
                 if let Some(meta) = self.lookup_meta(&item, path.span())? {
-                    match &meta {
-                        CompileMeta::Tuple {
-                            tuple, value_type, ..
-                        } => {
-                            let type_check = TypeCheck::Type(**value_type);
+                    match &meta.kind {
+                        CompileMetaKind::Tuple { tuple, type_of, .. } => {
+                            let type_check = TypeCheck::Type(**type_of);
                             (tuple.clone(), meta, type_check)
                         }
-                        CompileMeta::TupleVariant {
-                            tuple, value_type, ..
-                        } => {
-                            let type_check = TypeCheck::Variant(**value_type);
+                        CompileMetaKind::TupleVariant { tuple, type_of, .. } => {
+                            let type_check = TypeCheck::Variant(**type_of);
                             (tuple.clone(), meta, type_check)
                         }
                         _ => return Err(CompileError::UnsupportedMetaPattern { meta, span }),
@@ -658,16 +690,20 @@ impl<'a> Compiler<'a> {
             span,
         );
         self.asm
-            .pop_and_jump_if_not(scope.local_var_count, false_label, span);
+            .pop_and_jump_if_not(self.scopes.local_var_count(span)?, false_label, span);
 
         for (index, (pat, _)) in pat_tuple.items.iter().enumerate() {
             let span = pat.span();
 
-            let load = move |asm: &mut Assembly| {
-                asm.push(Inst::TupleIndexGetAt { offset, index }, span);
+            let load = move |this: &mut Self, needs: Needs| {
+                if needs.value() {
+                    this.asm.push(Inst::TupleIndexGetAt { offset, index }, span);
+                }
+
+                Ok(())
             };
 
-            self.compile_pat(scope, &*pat, false_label, &load)?;
+            self.compile_pat(&*pat, false_label, &load)?;
         }
 
         Ok(())
@@ -676,10 +712,9 @@ impl<'a> Compiler<'a> {
     /// Encode an object pattern match.
     pub(crate) fn compile_pat_object(
         &mut self,
-        scope: &mut Scope,
         pat_object: &ast::PatObject,
         false_label: Label,
-        load: &dyn Fn(&mut Assembly),
+        load: &dyn Fn(&mut Self, Needs) -> CompileResult<()>,
     ) -> CompileResult<()> {
         let span = pat_object.span();
         log::trace!("PatObject => {:?}", self.source.source(span));
@@ -687,8 +722,8 @@ impl<'a> Compiler<'a> {
         // NB: bind the loaded variable (once) to an anonymous var.
         // We reduce the number of copy operations by having specialized
         // operations perform the load from the given offset.
-        load(&mut self.asm);
-        let offset = scope.decl_anon(span);
+        load(self, Needs::Value)?;
+        let offset = self.scopes.decl_anon(span)?;
 
         let mut string_slots = Vec::new();
 
@@ -726,17 +761,17 @@ impl<'a> Compiler<'a> {
                     }
                 };
 
-                let (object, type_check) = match &meta {
-                    CompileMeta::Struct {
-                        object, value_type, ..
+                let (object, type_check) = match &meta.kind {
+                    CompileMetaKind::Struct {
+                        object, type_of, ..
                     } => {
-                        let type_check = TypeCheck::Type(**value_type);
+                        let type_check = TypeCheck::Type(**type_of);
                         (object, type_check)
                     }
-                    CompileMeta::StructVariant {
-                        object, value_type, ..
+                    CompileMetaKind::StructVariant {
+                        object, type_of, ..
                     } => {
-                        let type_check = TypeCheck::Variant(**value_type);
+                        let type_check = TypeCheck::Variant(**type_of);
                         (object, type_check)
                     }
                     _ => {
@@ -783,18 +818,23 @@ impl<'a> Compiler<'a> {
         );
 
         self.asm
-            .pop_and_jump_if_not(scope.local_var_count, false_label, span);
+            .pop_and_jump_if_not(self.scopes.local_var_count(span)?, false_label, span);
 
         for ((item, _), slot) in pat_object.fields.iter().zip(string_slots) {
             let span = item.span();
 
-            let load = move |asm: &mut Assembly| {
-                asm.push(Inst::ObjectSlotIndexGetAt { offset, slot }, span);
+            let load = move |this: &mut Self, needs: Needs| {
+                if needs.value() {
+                    this.asm
+                        .push(Inst::ObjectSlotIndexGetAt { offset, slot }, span);
+                }
+
+                Ok(())
             };
 
             if let Some((_, pat)) = &item.binding {
                 // load the given vector index and declare it as a local variable.
-                self.compile_pat(scope, &*pat, false_label, &load)?;
+                self.compile_pat(&*pat, false_label, &load)?;
                 continue;
             }
 
@@ -804,9 +844,9 @@ impl<'a> Compiler<'a> {
                 _ => return Err(CompileError::UnsupportedBinding { span }),
             };
 
-            load(&mut self.asm);
+            load(self, Needs::Value)?;
             let name = ident.resolve(&self.storage, &*self.source)?;
-            scope.decl_var(name.as_ref(), span);
+            self.scopes.decl_var(name.as_ref(), span)?;
         }
 
         Ok(())
@@ -817,19 +857,18 @@ impl<'a> Compiler<'a> {
     /// Returns `true` if the binding was used.
     pub(crate) fn compile_pat_meta_binding(
         &mut self,
-        scope: &mut Scope,
         span: Span,
         meta: &CompileMeta,
         false_label: Label,
-        load: &dyn Fn(&mut Assembly),
+        load: &dyn Fn(&mut Self, Needs) -> CompileResult<()>,
     ) -> CompileResult<bool> {
-        let (tuple, type_check) = match meta {
-            CompileMeta::Tuple {
-                tuple, value_type, ..
-            } if tuple.args == 0 => (tuple, TypeCheck::Type(**value_type)),
-            CompileMeta::TupleVariant {
-                tuple, value_type, ..
-            } if tuple.args == 0 => (tuple, TypeCheck::Variant(**value_type)),
+        let (tuple, type_check) = match &meta.kind {
+            CompileMetaKind::Tuple { tuple, type_of, .. } if tuple.args == 0 => {
+                (tuple, TypeCheck::Type(**type_of))
+            }
+            CompileMetaKind::TupleVariant { tuple, type_of, .. } if tuple.args == 0 => {
+                (tuple, TypeCheck::Variant(**type_of))
+            }
             _ => return Ok(false),
         };
 
@@ -838,7 +877,7 @@ impl<'a> Compiler<'a> {
             None => type_check,
         };
 
-        load(&mut self.asm);
+        load(self, Needs::Value)?;
         self.asm.push(
             Inst::MatchSequence {
                 type_check,
@@ -848,7 +887,7 @@ impl<'a> Compiler<'a> {
             span,
         );
         self.asm
-            .pop_and_jump_if_not(scope.local_var_count, false_label, span);
+            .pop_and_jump_if_not(self.scopes.local_var_count(span)?, false_label, span);
         Ok(true)
     }
 
@@ -860,10 +899,9 @@ impl<'a> Compiler<'a> {
     /// Returns a boolean indicating if the label was used.
     pub(crate) fn compile_pat(
         &mut self,
-        scope: &mut Scope,
         pat: &ast::Pat,
         false_label: Label,
-        load: &dyn Fn(&mut Assembly),
+        load: &dyn Fn(&mut Self, Needs) -> CompileResult<()>,
     ) -> CompileResult<bool> {
         let span = pat.span();
         log::trace!("Pat => {:?}", self.source.source(span));
@@ -875,7 +913,7 @@ impl<'a> Compiler<'a> {
                 let item = self.convert_path_to_item(&path.path)?;
 
                 if let Some(meta) = self.lookup_meta(&item, span)? {
-                    if self.compile_pat_meta_binding(scope, span, &meta, false_label, load)? {
+                    if self.compile_pat_meta_binding(span, &meta, false_label, load)? {
                         return Ok(true);
                     }
                 }
@@ -887,25 +925,28 @@ impl<'a> Compiler<'a> {
                     }
                 };
 
-                load(&mut self.asm);
-                scope.decl_var(&ident, span);
+                load(self, Needs::Value)?;
+                self.scopes.decl_var(&ident, span)?;
                 return Ok(false);
             }
             ast::Pat::PatIgnore(..) => {
+                // ignore binding, but might still have side effects, so must
+                // call the load generator.
+                load(self, Needs::None)?;
                 return Ok(false);
             }
             ast::Pat::PatUnit(unit) => {
-                load(&mut self.asm);
+                load(self, Needs::Value)?;
                 self.asm.push(Inst::IsUnit, unit.span());
             }
             ast::Pat::PatByte(lit_byte) => {
                 let byte = lit_byte.resolve(&self.storage, &*self.source)?;
-                load(&mut self.asm);
+                load(self, Needs::Value)?;
                 self.asm.push(Inst::EqByte { byte }, lit_byte.span());
             }
             ast::Pat::PatChar(lit_char) => {
                 let character = lit_char.resolve(&self.storage, &*self.source)?;
-                load(&mut self.asm);
+                load(self, Needs::Value)?;
                 self.asm
                     .push(Inst::EqCharacter { character }, lit_char.span());
             }
@@ -920,32 +961,32 @@ impl<'a> Compiler<'a> {
                     }
                 };
 
-                load(&mut self.asm);
+                load(self, Needs::Value)?;
                 self.asm.push(Inst::EqInteger { integer }, span);
             }
             ast::Pat::PatString(pat_string) => {
                 let span = pat_string.span();
                 let string = pat_string.resolve(&self.storage, &*self.source)?;
                 let slot = self.unit.borrow_mut().new_static_string(&*string)?;
-                load(&mut self.asm);
+                load(self, Needs::Value)?;
                 self.asm.push(Inst::EqStaticString { slot }, span);
             }
             ast::Pat::PatVec(pat_vec) => {
-                self.compile_pat_vec(scope, pat_vec, false_label, &load)?;
+                self.compile_pat_vec(pat_vec, false_label, &load)?;
                 return Ok(true);
             }
             ast::Pat::PatTuple(pat_tuple) => {
-                self.compile_pat_tuple(scope, pat_tuple, false_label, &load)?;
+                self.compile_pat_tuple(pat_tuple, false_label, &load)?;
                 return Ok(true);
             }
             ast::Pat::PatObject(object) => {
-                self.compile_pat_object(scope, object, false_label, &load)?;
+                self.compile_pat_object(object, false_label, &load)?;
                 return Ok(true);
             }
         }
 
         self.asm
-            .pop_and_jump_if_not(scope.local_var_count, false_label, span);
+            .pop_and_jump_if_not(self.scopes.local_var_count(span)?, false_label, span);
         Ok(true)
     }
 

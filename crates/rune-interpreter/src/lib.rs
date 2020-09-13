@@ -56,56 +56,6 @@ use std::sync::Arc;
 use runestick::{Item, Unit, Value, VmExecution};
 use std::io::{BufRead, Write};
 
-enum Runtime {
-    Initialized(Option<runestick::Vm>),
-    Executing(runestick::VmExecution)
-}
-
-impl Runtime {
-    pub fn execution(&mut self) -> Result<&mut runestick::VmExecution> {
-        match self {
-            Runtime::Initialized(vm) => {
-                let execution = vm.take().unwrap().execute(&Item::of(&["main"]), ())?;
-                *self = Runtime::Executing(execution);
-                self.execution()
-            }
-            Runtime::Executing(execution) => Ok(execution),
-            Runtime::Initialized(None) => {
-                unreachable!()
-            }
-        }
-    }
-
-    pub fn vm(&self) -> Result<&runestick::Vm> {
-        match self {
-            Runtime::Initialized(Some(vm)) => {
-                Ok(vm)
-            }
-            Runtime::Executing(execution) => {
-                let vm= execution.vm()?;
-                Ok(vm)
-            }
-            Runtime::Initialized(None) => {
-                unreachable!()
-            }
-        }
-    }
-
-    pub fn vm_mut(&mut self) -> Result<&mut runestick::Vm >{
-        match self {
-            Runtime::Initialized(Some(vm)) => {
-                Ok(vm)
-            }
-            Runtime::Executing(execution) => {
-                let vm= execution.vm_mut()?;
-                Ok(vm)
-            }
-            Runtime::Initialized(None) => {
-                unreachable!()
-            }
-        }
-    }
-}
 
 pub struct Interpreter {
     config: Config,
@@ -190,6 +140,7 @@ impl Interpreter {
         })
         
     }
+
 
     pub async fn run(&mut self, target: Option<Item>) -> Result<Option<Value>> {
 
@@ -490,7 +441,6 @@ impl std::convert::From<Interpreter> for InteractiveInterpreter {
 }
 
 pub struct Config {
-    pub path: Option<PathBuf>,
     pub trace : bool,
     pub dump_unit : bool,
     pub dump_instructions : bool,

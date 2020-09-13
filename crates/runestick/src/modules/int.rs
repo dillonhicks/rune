@@ -7,10 +7,9 @@ use std::num::ParseIntError;
 pub fn module() -> Result<Module, ContextError> {
     let mut module = Module::new(&["std"]);
 
-    module.ty(&["int"]).build::<i64>()?;
-    module
-        .ty(&["int", "ParseIntError"])
-        .build::<ParseIntError>()?;
+    module.ty::<i64>()?;
+    module.ty::<ParseIntError>()?;
+
     module.function(&["int", "parse"], parse)?;
 
     module.inst_fn("to_float", to_float)?;
@@ -47,4 +46,4 @@ fn to_float(value: i64) -> f64 {
     value as f64
 }
 
-crate::__internal_impl_external!(ParseIntError);
+crate::__internal_impl_any!(ParseIntError);

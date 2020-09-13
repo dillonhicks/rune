@@ -1,7 +1,7 @@
 use crate::future::SelectFuture;
-use crate::{Future, OwnedMut, Value, VmError};
-use futures::prelude::Stream;
-use futures::stream::FuturesUnordered;
+use crate::{Future, Mut, Value, VmError};
+use futures_core::Stream;
+use futures_util::stream::FuturesUnordered;
 use std::future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -9,12 +9,12 @@ use std::task::{Context, Poll};
 /// A stored select.
 #[derive(Debug)]
 pub struct Select {
-    futures: FuturesUnordered<SelectFuture<usize, OwnedMut<Future>>>,
+    futures: FuturesUnordered<SelectFuture<usize, Mut<Future>>>,
 }
 
 impl Select {
     /// Construct a new stored select.
-    pub(crate) fn new(futures: FuturesUnordered<SelectFuture<usize, OwnedMut<Future>>>) -> Self {
+    pub(crate) fn new(futures: FuturesUnordered<SelectFuture<usize, Mut<Future>>>) -> Self {
         Self { futures }
     }
 }

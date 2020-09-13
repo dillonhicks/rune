@@ -3,7 +3,7 @@ use crate::compiler::{Compiler, Needs};
 use crate::error::CompileResult;
 use crate::traits::Compile;
 use crate::{traits::Resolve as _, CompileError};
-use runestick::{CompileMeta, CompileMetaCapture, Hash, Inst};
+use runestick::{CompileMetaCapture, CompileMetaKind, Hash, Inst};
 
 /// Compile the body of a closure function.
 impl Compile<(ast::ExprClosure, &[CompileMetaCapture])> for Compiler<'_> {
@@ -15,8 +15,6 @@ impl Compile<(ast::ExprClosure, &[CompileMetaCapture])> for Compiler<'_> {
         log::trace!("ExprClosure => {:?}", self.source.source(span));
 
         let count = {
-            let scope = self.scopes.last_mut(span)?;
-
             for (arg, _) in expr_closure.args.as_slice() {
                 let span = arg.span();
 
@@ -26,11 +24,11 @@ impl Compile<(ast::ExprClosure, &[CompileMetaCapture])> for Compiler<'_> {
                     }
                     ast::FnArg::Ident(ident) => {
                         let ident = ident.resolve(&self.storage, &*self.source)?;
-                        scope.new_var(ident.as_ref(), span)?;
+                        self.scopes.new_var(ident.as_ref(), span)?;
                     }
                     ast::FnArg::Ignore(..) => {
                         // Ignore incoming variable.
-                        let _ = scope.decl_anon(span);
+                        let _ = self.scopes.decl_anon(span)?;
                     }
                 }
             }
@@ -39,11 +37,11 @@ impl Compile<(ast::ExprClosure, &[CompileMetaCapture])> for Compiler<'_> {
                 self.asm.push(Inst::PushTuple, span);
 
                 for capture in captures {
-                    scope.new_var(&capture.ident, span)?;
+                    self.scopes.new_var(&capture.ident, span)?;
                 }
             }
 
-            scope.total_var_count
+            self.scopes.total_var_count(span)?
         };
 
         self.compile((&*expr_closure.body, Needs::Value))?;
@@ -74,18 +72,21 @@ impl Compile<(&ast::ExprClosure, Needs)> for Compiler<'_> {
         let item = self.items.item();
         let hash = Hash::type_hash(&item);
 
-        let meta =
-            self.query
-                .query_meta(&item, span)?
-                .ok_or_else(|| CompileError::MissingType {
-                    item: item.clone(),
-                    span,
-                })?;
+        let meta = self
+            .query
+            .query_meta(&item)?
+            .ok_or_else(|| CompileError::MissingType {
+                item: item.clone(),
+                span,
+            })?;
 
-        let captures = match meta {
-            CompileMeta::Closure { captures, .. } => captures,
-            meta => {
-                return Err(CompileError::UnsupportedMetaClosure { meta, span });
+        let captures = match &meta.kind {
+            CompileMetaKind::Closure { captures, .. } => captures,
+            _ => {
+                return Err(CompileError::UnsupportedMetaClosure {
+                    meta: meta.clone(),
+                    span,
+                });
             }
         };
 
@@ -98,8 +99,8 @@ impl Compile<(&ast::ExprClosure, Needs)> for Compiler<'_> {
                 .push_with_comment(Inst::Fn { hash }, span, format!("closure `{}`", item));
         } else {
             // Construct a closure environment.
-            for capture in &*captures {
-                let var = self.scopes.get_var(&capture.ident, span)?;
+            for capture in &**captures {
+                let var = self.scopes.get_var(&capture.ident, self.visitor, span)?;
                 var.copy(&mut self.asm, span, format!("capture `{}`", capture.ident));
             }
 

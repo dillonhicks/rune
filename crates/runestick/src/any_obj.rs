@@ -1,6 +1,6 @@
 //! Helper types for a holder of data.
 
-use crate::{Any, Hash};
+use crate::{Any, Hash, RawStr};
 use std::any;
 use std::fmt;
 use std::mem::ManuallyDrop;
@@ -17,8 +17,8 @@ pub struct AnyObj {
 }
 
 impl fmt::Debug for AnyObj {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(fmt, "AnyObj({})", self.type_name())
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.debug(f)
     }
 }
 
@@ -32,12 +32,12 @@ impl AnyObj {
 
         Self {
             vtable: &AnyObjVtable {
+                kind: AnyObjKind::Owned,
                 drop: drop_impl::<T>,
                 as_ptr: as_ptr_impl::<T>,
-                as_mut: as_mut_impl::<T>,
-                take: as_mut_impl::<T>,
-                type_name: any::type_name::<T>,
-                type_hash: Hash::from_any::<T>,
+                debug: debug_impl::<T>,
+                type_name: type_name_impl::<T>,
+                type_hash: type_hash_impl::<T>,
             },
             data: data as *mut (),
         }
@@ -50,15 +50,12 @@ impl AnyObj {
     {
         Self {
             vtable: &AnyObjVtable {
+                kind: AnyObjKind::RefPtr,
                 drop: noop_drop_impl::<T>,
                 as_ptr: as_ptr_impl::<T>,
-                // Raw pointers cannot be casted to mutable pointers.
-                as_mut: not_supported::<T, _, _>,
-                // Pointers cannot be "taken", because they're not owned by the
-                // any.
-                take: not_supported::<T, _, _>,
-                type_name: any::type_name::<T>,
-                type_hash: Hash::from_any::<T>,
+                debug: debug_ref_impl::<T>,
+                type_name: type_name_impl::<T>,
+                type_hash: type_hash_impl::<T>,
             },
             data: data as *const _ as *const (),
         }
@@ -71,14 +68,12 @@ impl AnyObj {
     {
         Self {
             vtable: &AnyObjVtable {
+                kind: AnyObjKind::MutPtr,
                 drop: noop_drop_impl::<T>,
                 as_ptr: as_ptr_impl::<T>,
-                as_mut: as_mut_impl::<T>,
-                // Pointers cannot be "taken", because they're not owned by the
-                // any.
-                take: not_supported::<T, _, _>,
-                type_name: any::type_name::<T>,
-                type_hash: Hash::from_any::<T>,
+                debug: debug_mut_impl::<T>,
+                type_name: type_name_impl::<T>,
+                type_hash: type_hash_impl::<T>,
             },
             data: data as *mut _ as *mut () as *const (),
         }
@@ -184,10 +179,19 @@ impl AnyObj {
 
     /// Attempt to perform a conversion to a raw mutable pointer.
     pub fn raw_as_mut(&mut self, expected: Hash) -> Option<*mut ()> {
+        match self.vtable.kind {
+            // Only owned and mutable pointers can be treated as mutable.
+            AnyObjKind::Owned | AnyObjKind::MutPtr => (),
+            _ => return None,
+        }
+
         // Safety: invariants are checked at construction time.
         // We have mutable access to the inner value because we have mutable
         // access to the `Any`.
-        unsafe { (self.vtable.as_mut)(self.data, expected) }
+        unsafe {
+            let ptr = (self.vtable.as_ptr)(self.data, expected)?;
+            Some(ptr as *mut ())
+        }
     }
 
     /// Attempt to perform a conversion to a raw mutable pointer with the intent
@@ -196,19 +200,32 @@ impl AnyObj {
     /// If the conversion is not possible, we return a reconstructed `Any` as
     /// the error variant.
     pub fn raw_take(self, expected: Hash) -> Result<*mut (), Self> {
+        match self.vtable.kind {
+            // Only owned things can be taken.
+            AnyObjKind::Owned => (),
+            _ => return Err(self),
+        };
+
         let this = ManuallyDrop::new(self);
 
         // Safety: invariants are checked at construction time.
         // We have mutable access to the inner value because we have mutable
         // access to the `Any`.
-        match unsafe { (this.vtable.take)(this.data, expected) } {
-            Some(data) => Ok(data),
-            None => Err(ManuallyDrop::into_inner(this)),
+        unsafe {
+            match (this.vtable.as_ptr)(this.data, expected) {
+                Some(data) => Ok(data as *mut ()),
+                None => Err(ManuallyDrop::into_inner(this)),
+            }
         }
     }
 
+    /// Debug format the current any type.
+    pub fn debug(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        (self.vtable.debug)(f)
+    }
+
     /// Access the underlying type name for the data.
-    pub fn type_name(&self) -> &'static str {
+    pub fn type_name(&self) -> RawStr {
         (self.vtable.type_name)()
     }
 
@@ -234,17 +251,24 @@ pub type DropFn = unsafe fn(*const ());
 /// The signature of a pointer coercion function.
 pub type AsPtrFn = unsafe fn(*const (), expected: Hash) -> Option<*const ()>;
 
-/// The signature of a pointer coercion function.
-pub type AsMutFn = unsafe fn(*const (), expected: Hash) -> Option<*mut ()>;
-
-/// The signature of a pointer coercion function.
-pub type TakeFn = unsafe fn(*const (), expected: Hash) -> Option<*mut ()>;
-
 /// The signature of a descriptive type name function.
-pub type TypeNameFn = fn() -> &'static str;
+pub type DebugFn = fn(&mut fmt::Formatter<'_>) -> fmt::Result;
+
+/// Get the type name.
+pub type TypeNameFn = fn() -> RawStr;
 
 /// The signature of a type hash function.
 pub type TypeHashFn = fn() -> Hash;
+
+/// The kind of the stored value in the `AnyObj`.
+enum AnyObjKind {
+    /// A boxed value that is owned.
+    Owned,
+    /// A pointer (`*const T`).
+    RefPtr,
+    /// A mutable pointer (`*mut T`).
+    MutPtr,
+}
 
 /// The vtable for any type stored in the virtual machine.
 ///
@@ -253,15 +277,15 @@ pub type TypeHashFn = fn() -> Hash;
 /// `std::any::Any` which are checked at construction-time for this type.
 #[repr(C)]
 pub struct AnyObjVtable {
+    /// The kind of the object being stored. Determines how it can be accessed.
+    kind: AnyObjKind,
     /// The underlying drop implementation for the stored type.
     drop: DropFn,
     /// Punt the inner pointer to the type corresponding to the type hash.
     as_ptr: AsPtrFn,
-    /// Punt the inner pointer to the type corresponding to the type hash.
-    as_mut: AsMutFn,
-    /// Punt the inner pointer to the type corresponding to the type hash.
-    take: TakeFn,
     /// Type information for diagnostics.
+    debug: DebugFn,
+    /// Type name accessor.
     type_name: TypeNameFn,
     /// Get the type hash of the stored type.
     type_hash: TypeHashFn,
@@ -284,20 +308,37 @@ where
 
 fn noop_drop_impl<T>(_: *const ()) {}
 
-fn as_mut_impl<T>(this: *const (), expected: Hash) -> Option<*mut ()>
+fn debug_impl<T>(f: &mut fmt::Formatter<'_>) -> fmt::Result
 where
     T: Any,
 {
-    if expected == Hash::from_type_id(any::TypeId::of::<T>()) {
-        Some(this as *mut ())
-    } else {
-        None
-    }
+    write!(f, "{}", T::NAME)
 }
 
-fn not_supported<T, P, O>(_: P, _: Hash) -> Option<O>
+fn debug_ref_impl<T>(f: &mut fmt::Formatter<'_>) -> fmt::Result
 where
     T: Any,
 {
-    None
+    write!(f, "&{}", T::NAME)
+}
+
+fn debug_mut_impl<T>(f: &mut fmt::Formatter<'_>) -> fmt::Result
+where
+    T: Any,
+{
+    write!(f, "&mut {}", T::NAME)
+}
+
+fn type_name_impl<T>() -> RawStr
+where
+    T: Any,
+{
+    T::NAME
+}
+
+fn type_hash_impl<T>() -> Hash
+where
+    T: Any,
+{
+    T::type_hash()
 }

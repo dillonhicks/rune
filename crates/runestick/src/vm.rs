@@ -2,8 +2,8 @@ use crate::future::SelectFuture;
 use crate::unit::UnitFn;
 use crate::{
     Args, Awaited, Bytes, Call, Context, FromValue, Function, Future, Generator, GuardedArgs, Hash,
-    Inst, Integer, IntoHash, Object, Panic, Select, Shared, Stack, Stream, Tuple, TypeCheck,
-    TypedObject, Unit, Value, VariantObject, VmError, VmErrorKind, VmExecution, VmHalt,
+    Inst, IntoHash, Object, Panic, Select, Shared, Stack, Stream, Tuple, TypeCheck, TypedObject,
+    Unit, Value, VariantObject, VmError, VmErrorKind, VmExecution, VmHalt, VmIntegerRepr,
 };
 use std::fmt;
 use std::mem;
@@ -286,13 +286,13 @@ impl Vm {
     }
 
     fn op_select(&mut self, len: usize) -> Result<Option<Select>, VmError> {
-        let futures = futures::stream::FuturesUnordered::new();
+        let futures = futures_util::stream::FuturesUnordered::new();
 
         let arguments = self.stack.drain_stack_top(len)?.collect::<Vec<_>>();
 
         for (branch, value) in arguments.into_iter().enumerate() {
             let future = match self.try_into_future(value)? {
-                Ok(future) => future.owned_mut()?,
+                Ok(future) => future.into_mut()?,
                 Err(value) => {
                     return Err(VmError::from(VmErrorKind::UnsupportedAwait {
                         actual: value.type_info()?,
@@ -321,7 +321,7 @@ impl Vm {
         A: Args,
     {
         let count = A::count() + 1;
-        let hash = Hash::instance_function(target.value_type()?, hash.into_hash());
+        let hash = Hash::instance_function(target.type_of()?, hash.into_hash());
 
         if let Some(UnitFn::Offset {
             offset,
@@ -355,7 +355,7 @@ impl Vm {
         A: Args,
     {
         let count = A::count() + 1;
-        let hash = Hash::getter(target.value_type()?, hash.into_hash());
+        let hash = Hash::getter(target.type_of()?, hash.into_hash());
 
         let handler = match self.context.lookup(hash) {
             Some(handler) => handler,
@@ -912,7 +912,7 @@ impl Vm {
     #[inline]
     fn op_load_instance_fn(&mut self, hash: Hash) -> Result<(), VmError> {
         let instance = self.stack.pop()?;
-        let ty = instance.value_type()?;
+        let ty = instance.type_of()?;
         let hash = Hash::instance_function(ty, hash);
         self.stack.push(Value::Type(hash));
         Ok(())
@@ -1011,7 +1011,7 @@ impl Vm {
             None => {
                 return Err(VmError::from(VmErrorKind::MissingIndex {
                     target: target.type_info()?,
-                    index: Integer::Usize(index),
+                    index: VmIntegerRepr::Usize(index),
                 }));
             }
         };
@@ -1124,7 +1124,7 @@ impl Vm {
                         Err(..) => {
                             return Err(VmError::from(VmErrorKind::MissingIndex {
                                 target: target.type_info()?,
-                                index: Integer::I64(*index),
+                                index: VmIntegerRepr::I64(*index),
                             }));
                         }
                     };
@@ -1464,7 +1464,7 @@ impl Vm {
             }
         };
 
-        Ok(*a.value_type()? == hash)
+        Ok(*a.type_of()? == hash)
     }
 
     #[inline]
@@ -1913,8 +1913,8 @@ impl Vm {
         // NB: +1 to include the instance itself.
         let args = args + 1;
         let instance = self.stack.at_offset_from_top(args)?;
-        let value_type = instance.value_type()?;
-        let hash = Hash::instance_function(value_type, hash);
+        let type_of = instance.type_of()?;
+        let hash = Hash::instance_function(type_of, hash);
 
         match self.unit.lookup(hash) {
             Some(info) => match info {
@@ -1957,7 +1957,7 @@ impl Vm {
         let hash = match function {
             Value::Type(hash) => hash,
             Value::Function(function) => {
-                let function = function.owned_ref()?;
+                let function = function.into_ref()?;
                 return function.call_with_vm(self, args);
             }
             actual => {

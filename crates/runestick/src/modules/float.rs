@@ -13,16 +13,14 @@ fn to_integer(value: f64) -> i64 {
     value as i64
 }
 
-crate::__internal_impl_external!(ParseFloatError);
+crate::__internal_impl_any!(ParseFloatError);
 
 /// Install the core package into the given functions namespace.
 pub fn module() -> Result<Module, ContextError> {
     let mut module = Module::new(&["std"]);
 
-    module.ty(&["float"]).build::<f64>()?;
-    module
-        .ty(&["float", "ParseFloatError"])
-        .build::<ParseFloatError>()?;
+    module.ty::<f64>()?;
+    module.ty::<ParseFloatError>()?;
     module.function(&["float", "parse"], parse)?;
     module.inst_fn("to_integer", to_integer)?;
 

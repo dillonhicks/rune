@@ -3,10 +3,10 @@
 use crate::ast;
 use crate::collections::{HashMap, HashSet};
 use crate::error::CompileResult;
-use crate::{CompileError, Resolve as _, Storage, UnitBuilder};
+use crate::{CompileError, CompileVisitor, Resolve as _, SourceId, Storage, UnitBuilder};
 use runestick::{
-    Call, CompileMeta, CompileMetaCapture, CompileMetaStruct, CompileMetaTuple, Hash, Item, Source,
-    Span, Type,
+    Call, CompileMeta, CompileMetaCapture, CompileMetaKind, CompileMetaStruct, CompileMetaTuple,
+    Hash, Item, Source, Span, Type,
 };
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -95,12 +95,19 @@ pub(crate) struct BuildEntry {
     pub(crate) build: Build,
     pub(crate) source: Arc<Source>,
     pub(crate) source_id: usize,
+    /// If the queued up entry was unused or not.
+    pub(crate) unused: bool,
 }
 
 pub(crate) struct IndexedEntry {
-    pub(crate) indexed: Indexed,
+    /// The source location of the indexed entry.
+    pub(crate) span: Span,
+    /// The source of the indexed entry.
     pub(crate) source: Arc<Source>,
+    /// The source id of the indexed entry.
     pub(crate) source_id: usize,
+    /// The entry data.
+    pub(crate) indexed: Indexed,
 }
 
 pub(crate) struct Query {
@@ -130,15 +137,17 @@ impl Query {
         span: Span,
     ) -> Result<(), CompileError> {
         log::trace!("new enum: {}", item);
+
         self.index(
             item,
             IndexedEntry {
-                indexed: Indexed::Enum,
+                span,
                 source,
                 source_id,
+                indexed: Indexed::Enum,
             },
-            span,
         )?;
+
         Ok(())
     }
 
@@ -152,15 +161,17 @@ impl Query {
     ) -> Result<(), CompileError> {
         log::trace!("new struct: {}", item);
         let span = ast.span();
+
         self.index(
             item,
             IndexedEntry {
-                indexed: Indexed::Struct(Struct::new(ast)),
+                span,
                 source,
                 source_id,
+                indexed: Indexed::Struct(Struct::new(ast)),
             },
-            span,
         )?;
+
         Ok(())
     }
 
@@ -175,15 +186,17 @@ impl Query {
         span: Span,
     ) -> Result<(), CompileError> {
         log::trace!("new variant: {}", item);
+
         self.index(
             item,
             IndexedEntry {
-                indexed: Indexed::Variant(Variant::new(enum_item, ast)),
+                span,
                 source,
                 source_id,
+                indexed: Indexed::Variant(Variant::new(enum_item, ast)),
             },
-            span,
         )?;
+
         Ok(())
     }
 
@@ -203,15 +216,15 @@ impl Query {
         self.index(
             item,
             IndexedEntry {
+                span,
+                source,
+                source_id,
                 indexed: Indexed::Closure(Closure {
                     ast,
                     captures,
                     call,
                 }),
-                source,
-                source_id,
             },
-            span,
         )?;
 
         Ok(())
@@ -233,47 +246,65 @@ impl Query {
         self.index(
             item,
             IndexedEntry {
+                span,
+                source,
+                source_id,
                 indexed: Indexed::AsyncBlock(AsyncBlock {
                     ast,
                     captures,
                     call,
                 }),
-                source,
-                source_id,
             },
-            span,
         )?;
 
         Ok(())
     }
 
     /// Index the given element.
-    pub fn index(
-        &mut self,
-        item: Item,
-        entry: IndexedEntry,
-        span: Span,
-    ) -> Result<(), CompileError> {
+    pub fn index(&mut self, item: Item, entry: IndexedEntry) -> Result<(), CompileError> {
         log::trace!("indexed: {}", item);
 
         self.unit.borrow_mut().insert_name(&item);
 
-        if let Some(..) = self.indexed.insert(item.clone(), entry) {
+        if let Some(old) = self.indexed.insert(item.clone(), entry) {
             return Err(CompileError::ItemConflict {
                 existing: item,
-                span,
+                span: old.span,
             });
         }
 
         Ok(())
     }
 
-    /// Query for the given meta item.
-    pub fn query_meta(
+    /// Remove and queue up unused entries for building.
+    ///
+    /// Returns boolean indicating if any unused entries were queued up.
+    pub(crate) fn queue_unused_entries(
         &mut self,
-        item: &Item,
-        span: Span,
-    ) -> Result<Option<CompileMeta>, CompileError> {
+        visitor: &mut dyn CompileVisitor,
+    ) -> Result<bool, (SourceId, CompileError)> {
+        let unused = std::mem::take(&mut self.indexed);
+
+        if unused.is_empty() {
+            return Ok(false);
+        }
+
+        for (item, entry) in unused {
+            let span = entry.span;
+            let source_id = entry.source_id;
+
+            let meta = self
+                .build_indexed_entry(item, entry, true)
+                .map_err(|error| (source_id, error))?;
+
+            visitor.visit_meta(&meta, span);
+        }
+
+        Ok(true)
+    }
+
+    /// Query for the given meta item.
+    pub fn query_meta(&mut self, item: &Item) -> Result<Option<CompileMeta>, CompileError> {
         let item = Item::of(item);
 
         if let Some(meta) = self.unit.borrow().lookup_meta(&item) {
@@ -281,23 +312,36 @@ impl Query {
         }
 
         // See if there's an index entry we can construct.
-        let IndexedEntry {
-            indexed,
-            source,
-            source_id,
-        } = match self.indexed.remove(&item) {
+        let entry = match self.indexed.remove(&item) {
             Some(entry) => entry,
             None => return Ok(None),
         };
 
-        let meta = match indexed {
-            Indexed::Enum => CompileMeta::Enum {
-                value_type: Type::from(Hash::type_hash(&item)),
+        Ok(Some(self.build_indexed_entry(item, entry, false)?))
+    }
+
+    /// Build a single, indexed entry and return its metadata.
+    pub(crate) fn build_indexed_entry(
+        &mut self,
+        item: Item,
+        entry: IndexedEntry,
+        unused: bool,
+    ) -> Result<CompileMeta, CompileError> {
+        let IndexedEntry {
+            span: entry_span,
+            indexed,
+            source,
+            source_id,
+        } = entry;
+
+        let kind = match indexed {
+            Indexed::Enum => CompileMetaKind::Enum {
+                type_of: Type::from(Hash::type_hash(&item)),
                 item: item.clone(),
             },
             Indexed::Variant(variant) => {
                 // Assert that everything is built for the enum.
-                self.query_meta(&variant.enum_item, span)?;
+                self.query_meta(&variant.enum_item)?;
                 self.variant_into_item_decl(&item, variant.ast, Some(variant.enum_item), &*source)?
             }
             Indexed::Struct(st) => {
@@ -309,10 +353,11 @@ impl Query {
                     build: Build::Function(f),
                     source,
                     source_id,
+                    unused,
                 });
 
-                CompileMeta::Function {
-                    value_type: Type::from(Hash::type_hash(&item)),
+                CompileMetaKind::Function {
+                    type_of: Type::from(Hash::type_hash(&item)),
                     item: item.clone(),
                 }
             }
@@ -323,10 +368,11 @@ impl Query {
                     build: Build::Closure(c),
                     source,
                     source_id,
+                    unused,
                 });
 
-                CompileMeta::Closure {
-                    value_type: Type::from(Hash::type_hash(&item)),
+                CompileMetaKind::Closure {
+                    type_of: Type::from(Hash::type_hash(&item)),
                     item: item.clone(),
                     captures,
                 }
@@ -338,27 +384,29 @@ impl Query {
                     build: Build::AsyncBlock(async_block),
                     source,
                     source_id,
+                    unused,
                 });
 
-                CompileMeta::AsyncBlock {
-                    value_type: Type::from(Hash::type_hash(&item)),
+                CompileMetaKind::AsyncBlock {
+                    type_of: Type::from(Hash::type_hash(&item)),
                     item: item.clone(),
                     captures,
                 }
             }
         };
 
-        self.unit.borrow_mut().insert_meta(meta)?;
+        let meta = CompileMeta {
+            span: Some(entry_span),
+            kind,
+        };
 
-        match self.unit.borrow().lookup_meta(&item) {
-            Some(meta) => Ok(Some(meta)),
-            None => Err(CompileError::MissingType { span, item }),
-        }
+        self.unit.borrow_mut().insert_meta(meta.clone())?;
+        Ok(meta)
     }
 
     /// Construct metadata for an empty body.
-    fn empty_body_meta(&self, item: &Item, enum_item: Option<Item>) -> CompileMeta {
-        let value_type = Type::from(Hash::type_hash(item));
+    fn empty_body_meta(&self, item: &Item, enum_item: Option<Item>) -> CompileMetaKind {
+        let type_of = Type::from(Hash::type_hash(item));
 
         let tuple = CompileMetaTuple {
             item: item.clone(),
@@ -367,12 +415,12 @@ impl Query {
         };
 
         match enum_item {
-            Some(enum_item) => CompileMeta::TupleVariant {
-                value_type,
+            Some(enum_item) => CompileMetaKind::TupleVariant {
+                type_of,
                 enum_item,
                 tuple,
             },
-            None => CompileMeta::Tuple { value_type, tuple },
+            None => CompileMetaKind::Tuple { type_of, tuple },
         }
     }
 
@@ -382,8 +430,8 @@ impl Query {
         item: &Item,
         enum_item: Option<Item>,
         tuple: ast::TupleBody,
-    ) -> CompileMeta {
-        let value_type = Type::from(Hash::type_hash(item));
+    ) -> CompileMetaKind {
+        let type_of = Type::from(Hash::type_hash(item));
 
         let tuple = CompileMetaTuple {
             item: item.clone(),
@@ -392,12 +440,12 @@ impl Query {
         };
 
         match enum_item {
-            Some(enum_item) => CompileMeta::TupleVariant {
-                value_type,
+            Some(enum_item) => CompileMetaKind::TupleVariant {
+                type_of,
                 enum_item,
                 tuple,
             },
-            None => CompileMeta::Tuple { value_type, tuple },
+            None => CompileMetaKind::Tuple { type_of, tuple },
         }
     }
 
@@ -408,8 +456,8 @@ impl Query {
         enum_item: Option<Item>,
         source: &Source,
         st: ast::StructBody,
-    ) -> CompileResult<CompileMeta> {
-        let value_type = Type::from(Hash::type_hash(item));
+    ) -> CompileResult<CompileMetaKind> {
+        let type_of = Type::from(Hash::type_hash(item));
 
         let mut fields = HashSet::new();
 
@@ -424,12 +472,12 @@ impl Query {
         };
 
         Ok(match enum_item {
-            Some(enum_item) => CompileMeta::StructVariant {
-                value_type,
+            Some(enum_item) => CompileMetaKind::StructVariant {
+                type_of,
                 enum_item,
                 object,
             },
-            None => CompileMeta::Struct { value_type, object },
+            None => CompileMetaKind::Struct { type_of, object },
         })
     }
 
@@ -440,7 +488,7 @@ impl Query {
         body: ast::ItemEnumVariant,
         enum_item: Option<Item>,
         source: &Source,
-    ) -> Result<CompileMeta, CompileError> {
+    ) -> Result<CompileMetaKind, CompileError> {
         Ok(match body {
             ast::ItemEnumVariant::EmptyBody => self.empty_body_meta(item, enum_item),
             ast::ItemEnumVariant::TupleBody(tuple) => self.tuple_body_meta(item, enum_item, tuple),
@@ -457,7 +505,7 @@ impl Query {
         body: ast::ItemStructBody,
         enum_item: Option<Item>,
         source: &Source,
-    ) -> Result<CompileMeta, CompileError> {
+    ) -> Result<CompileMetaKind, CompileError> {
         Ok(match body {
             ast::ItemStructBody::EmptyBody(_) => self.empty_body_meta(item, enum_item),
             ast::ItemStructBody::TupleBody(tuple, _) => {

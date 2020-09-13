@@ -12,7 +12,7 @@ jobs:
         with:
           toolchain: stable
           override: true
-      - name: Cache Cargo
+      - name: Caching
         uses: actions/cache@v2
         with:
           path: |
@@ -21,4 +21,7 @@ jobs:
             ~/.cargo/bin
             target
           key: ${{ runner.os }}-cargo-${{ steps.rust_toolchain.outputs.rustc_hash }}
-      - run: cargo test --all
+      - name: Run tests
+        run: cargo test --all
+      - name: Run example scripts
+        run: cargo run --bin rune -- --experimental -O macros=true scripts/*.rn

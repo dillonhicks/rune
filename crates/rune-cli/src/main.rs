@@ -45,160 +45,127 @@
 //! [Rune Language]: https://github.com/rune-rs/rune
 //! [runestick]: https://github.com/rune-rs/rune
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use rune::termcolor::{ColorChoice, StandardStream};
+<<<<<<< HEAD
 use std::env;
 use std::path:: PathBuf;
 use rune_interpreter::{Interpreter, Config, InteractiveInterpreter};
+=======
+use rune::EmitDiagnostics as _;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use structopt::StructOpt;
 
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let mut args = env::args();
-    args.next();
+#[derive(Default, Debug, Clone, StructOpt)]
+#[structopt(name = "rune", about = "The Rune Language")]
+struct Args {
+    /// Run the interpreter in interactive mode (REPL).
+    #[structopt(short, long)]
+    interactive: bool,
+    /// Provide detailed tracing for each instruction executed.
+    #[structopt(short, long)]
+    trace: bool,
+    /// Dump everything.
+    #[structopt(short, long)]
+    dump: bool,
+    /// Dump default information about unit.
+    #[structopt(long)]
+    dump_unit: bool,
+    /// Dump unit instructions.
+    #[structopt(long)]
+    dump_instructions: bool,
+    /// Dump the state of the stack after completion.
+    ///
+    /// If compiled with `--trace` will dump it after each instruction.
+    #[structopt(long)]
+    dump_stack: bool,
+    /// Dump dynamic functions.
+    #[structopt(long)]
+    dump_functions: bool,
+    /// Dump dynamic types.
+    #[structopt(long)]
+    dump_types: bool,
+    /// Dump native functions.
+    #[structopt(long)]
+    dump_native_functions: bool,
+    /// Dump native types.
+    #[structopt(long)]
+    dump_native_types: bool,
+    /// Include source code references where appropriate (only available if -O debug-info=true).
+    #[structopt(long)]
+    with_source: bool,
+    /// Enable experimental features.
+    ///
+    /// This makes the `std::experimental` module available to scripts.
+    #[structopt(long)]
+    experimental: bool,
+    /// Input Rune Scripts
+    #[structopt(parse(from_os_str))]
+    paths: Vec<PathBuf>,
+    /// Set the given compiler option (see `--help` for available options).
+    ///
+    /// memoize-instance-fn[=<true/false>] - Inline the lookup of an instance function where appropriate.
+    ///
+    /// link-checks[=<true/false>] - Perform linker checks which makes sure that called functions exist.
+    ///
+    /// debug-info[=<true/false>] - Enable or disable debug info.
+    ///
+    /// macros[=<true/false>] - Enable or disable macros (experimental).
+    ///
+    /// bytecode[=<true/false>] - Enable or disable bytecode caching (experimental).
+    #[structopt(name = "option", short = "O", number_of_values = 1)]
+    compiler_options: Vec<String>,
+}
 
-    let mut interactive = false;
-
-    let mut path = None;
-    let mut trace = false;
-    let mut dump_unit = false;
-    let mut dump_instructions = false;
-    let mut dump_stack = false;
-    let mut dump_functions = false;
-    let mut dump_types = false;
-    let mut dump_native_functions = false;
-    let mut dump_native_types = false;
-    let mut with_source = false;
-    let mut help = false;
-    let mut experimental = false;
-
-    let mut options = rune::Options::default();
-
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--" => continue,
-            "--interactive" => {
-                interactive = true;
-            }
-            "--trace" => {
-                trace = true;
-            }
-            "--dump" => {
-                dump_unit = true;
-                dump_stack = true;
-                dump_functions = true;
-                dump_types = true;
-                dump_native_functions = true;
-                dump_native_types = true;
-            }
-            "--dump-unit" => {
-                dump_unit = true;
-                dump_instructions = true;
-            }
-            "--dump-stack" => {
-                dump_stack = true;
-            }
-            "--dump-instructions" => {
-                dump_unit = true;
-                dump_instructions = true;
-            }
-            "--dump-functions" => {
-                dump_unit = true;
-                dump_functions = true;
-            }
-            "--dump-types" => {
-                dump_unit = true;
-                dump_types = true;
-            }
-            "--dump-native-functions" => {
-                dump_native_functions = true;
-            }
-            "--dump-native-types" => {
-                dump_native_types = true;
-            }
-            "--with-source" => {
-                with_source = true;
-            }
-            "--experimental" => {
-                experimental = true;
-            }
-            "-O" => {
-                let opt = match args.next() {
-                    Some(opt) => opt,
-                    None => {
-                        println!("expected optimization option to `-O`");
-                        return Ok(());
-                    }
-                };
-
-                options.parse_option(&opt)?;
-            }
-            "--help" | "-h" => {
-                help = true;
-            }
-            other if !other.starts_with('-') => {
-                path = Some(PathBuf::from(other));
-            }
-            other => {
-                println!("Unrecognized option: {}", other);
-                help = true;
-            }
+async fn try_main() -> Result<ExitCode> {
+    env_logger::init();
+    let args = {
+        let mut args = Args::from_args();
+        if args.dump {
+            args.dump_unit = true;
+            args.dump_stack = true;
+            args.dump_functions = true;
+            args.dump_types = true;
+            args.dump_native_functions = true;
+            args.dump_native_types = true;
         }
-    }
 
-    const USAGE: &str = "rune-cli [--trace] <file>";
-
-    if help {
-        println!("Usage: {}", USAGE);
-        println!();
-        println!("  --help, -h               - Show this help.");
-        println!(
-            "  --interactive            - Run the interpreter in interactive mode."
-        );
-        println!(
-            "  --trace                  - Provide detailed tracing for each instruction executed."
-        );
-        println!("  --dump                   - Dump everything.");
-        println!("  --dump-unit              - Dump default information about unit.");
-        println!("  --dump-instructions      - Dump unit instructions.");
-        println!("  --dump-stack             - Dump the state of the stack after completion. If compiled with `--trace` will dump it after each instruction.");
-        println!("  --dump-functions         - Dump dynamic functions.");
-        println!("  --dump-types             - Dump dynamic types.");
-        println!("  --dump-native-functions  - Dump native functions.");
-        println!("  --dump-native-types      - Dump native types.");
-        println!("  --with-source            - Include source code references where appropriate (only available if -O debug-info=true).");
-        println!("  --experimental           - Enabled experimental features.");
-        println!();
-        println!("Compiler options:");
-        println!("  -O <option>       - Update the given compiler option.");
-        println!();
-        println!("Available <option> arguments:");
-        println!("  memoize-instance-fn[=<true/false>] - Inline the lookup of an instance function where appropriate.");
-        println!("  link-checks[=<true/false>]         - Perform linker checks which makes sure that called functions exist.");
-        println!("  debug-info[=<true/false>]          - Enable or disable debug info.");
-        println!("  macros[=<true/false>]              - Enable or disable macros (experimental).");
-        println!("  bytecode[=<true/false>]            - Enable or disable bytecode caching (experimental).");
-        return Ok(());
-    }
-
-    let path = match path {
-        Some(path) => path,
-        None => {
-            bail!("Invalid usage: {}", USAGE);
+        if args.dump_unit {
+            args.dump_unit = true;
+            args.dump_instructions = true;
         }
+        if args.dump_functions
+            || args.dump_native_functions
+            || args.dump_stack
+            || args.dump_types
+            || args.dump_instructions
+        {
+            args.dump_unit = true;
+        }
+        args
     };
 
+    let mut options = rune::Options::default();
+    for opt in &args.compiler_options {
+        options.parse_option(opt)?;
+    }
+
+
+
     let mut interpreter = Interpreter::new(Config {
-        path: Some(path),
-        trace,
-        dump_unit,
-        dump_instructions,
-        dump_stack,
-        dump_functions,
-        dump_types,
-        dump_native_functions,
-        dump_native_types,
-        with_source,
+        trace: args.trace,
+        dump_unit: args.dump_unit,
+        dump_instructions: args.dump_instructions,
+        dump_stack: args.dump_stack,
+        dump_functions: args.dump_functions,
+        dump_types: args.dump_types,
+        dump_native_functions: args.dump_native_functions,
+        dump_native_types: args.dump_native_types,
+        with_source: args.with_source,
         experimental,
         options,
     },
@@ -208,8 +175,34 @@ async fn main() -> Result<()> {
 
 
     if interactive {
-        InteractiveInterpreter::from(interpreter).interact().await.map(|_| ())
+        InteractiveInterpreter::from(interpreter).interact().await.map(|_| ExitCode::Success)
     } else {
-        interpreter.run(None).await.map(|_| ())
+
+        interpreter.run(None).await.map(|_| ExitCode::Success)
     }
 }
+
+
+// Our own private ExitCode since std::process::ExitCode is nightly only.
+// Note that these numbers are actually meaningful on Windows, but we don't
+// care.
+#[repr(i32)]
+enum ExitCode {
+    Success = 0,
+    Failure = 1,
+    VmError = 2,
+}
+
+#[tokio::main]
+async fn main() {
+    match try_main().await {
+        Ok(exit_code) => {
+            std::process::exit(exit_code as i32);
+        }
+        Err(error) => {
+            eprintln!("Error: {}", error);
+            std::process::exit(-1);
+        }
+    }
+}
+

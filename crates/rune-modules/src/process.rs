@@ -39,10 +39,10 @@ use tokio::process;
 /// Construct the `process` module.
 pub fn module() -> Result<runestick::Module, runestick::ContextError> {
     let mut module = runestick::Module::new(&["process"]);
-    module.ty(&["Command"]).build::<Command>()?;
-    module.ty(&["Child"]).build::<Child>()?;
-    module.ty(&["ExitStatus"]).build::<ExitStatus>()?;
-    module.ty(&["Output"]).build::<Output>()?;
+    module.ty::<Command>()?;
+    module.ty::<Child>()?;
+    module.ty::<ExitStatus>()?;
+    module.ty::<Output>()?;
 
     module.function(&["Command", "new"], Command::new)?;
     module.inst_fn("spawn", Command::spawn)?;
@@ -169,12 +169,12 @@ impl Output {
     }
 
     /// Grab the stdout of the process.
-    fn stdout(&mut self) -> Shared<Bytes> {
+    fn stdout(&self) -> Shared<Bytes> {
         self.stdout.clone()
     }
 
     /// Grab the stderr of the process.
-    fn stderr(&mut self) -> Shared<Bytes> {
+    fn stderr(&self) -> Shared<Bytes> {
         self.stderr.clone()
     }
 }

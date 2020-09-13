@@ -50,7 +50,7 @@
 //! }
 //! ```
 
-use runestick::{Any, Bytes};
+use runestick::{Any, Bytes, Value};
 use std::fmt;
 use std::fmt::Write as _;
 
@@ -58,11 +58,11 @@ use std::fmt::Write as _;
 pub fn module() -> Result<runestick::Module, runestick::ContextError> {
     let mut module = runestick::Module::new(&["http"]);
 
-    module.ty(&["Client"]).build::<Client>()?;
-    module.ty(&["Response"]).build::<Response>()?;
-    module.ty(&["RequestBuilder"]).build::<RequestBuilder>()?;
-    module.ty(&["StatusCode"]).build::<StatusCode>()?;
-    module.ty(&["Error"]).build::<Error>()?;
+    module.ty::<Client>()?;
+    module.ty::<Response>()?;
+    module.ty::<RequestBuilder>()?;
+    module.ty::<StatusCode>()?;
+    module.ty::<Error>()?;
 
     module.function(&["Client", "new"], Client::new)?;
     module.async_function(&["get"], get)?;
@@ -71,6 +71,7 @@ pub fn module() -> Result<runestick::Module, runestick::ContextError> {
     module.async_inst_fn("post", Client::post)?;
 
     module.async_inst_fn("text", Response::text)?;
+    module.async_inst_fn("json", Response::json)?;
     module.inst_fn("status", Response::status)?;
 
     module.async_inst_fn("send", RequestBuilder::send)?;
@@ -116,6 +117,11 @@ impl StatusCode {
 impl Response {
     async fn text(self) -> Result<String, Error> {
         let text = self.response.text().await?;
+        Ok(text)
+    }
+
+    async fn json(self) -> Result<Value, Error> {
+        let text = self.response.json().await?;
         Ok(text)
     }
 

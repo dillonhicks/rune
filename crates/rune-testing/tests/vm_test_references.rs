@@ -1,5 +1,5 @@
 use rune::{Options, Sources, Warnings};
-use runestick::{Any, AnyObj, Context, Item, Module, Shared, Source, Value, Vm, VmError};
+use runestick::{Any, AnyObj, Context, Module, Shared, Source, Value, Vm, VmError};
 use std::sync::Arc;
 
 #[derive(Debug, Default, Any)]
@@ -16,7 +16,7 @@ impl Foo {
 #[test]
 fn vm_test_references() {
     let mut module = Module::empty();
-    module.ty(&["Foo"]).build::<Foo>().unwrap();
+    module.ty::<Foo>().unwrap();
     module
         .inst_fn(runestick::ADD_ASSIGN, Foo::add_assign)
         .unwrap();
@@ -58,7 +58,7 @@ fn vm_test_references() {
 fn vm_test_references_error() {
     fn take_it(this: Shared<AnyObj>) -> Result<(), VmError> {
         // NB: this will error, since this is a reference.
-        let _ = this.owned_ref()?;
+        let _ = this.into_ref()?;
         Ok(())
     }
 
@@ -90,7 +90,7 @@ fn vm_test_references_error() {
     let mut foo = Foo::default();
     assert_eq!(foo.value, 0);
 
-    // This should error, because we're trying to acquire an `OwnedRef` out of a
+    // This should error, because we're trying to acquire an `Ref` out of a
     // passed in reference.
     assert!(vm.call(&["main"], (&mut foo,)).is_err());
 }

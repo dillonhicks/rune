@@ -46,8 +46,8 @@ extern crate proc_macro;
 
 use quote::quote;
 
+mod any;
 mod context;
-mod external;
 mod from_value;
 mod internals;
 mod to_value;
@@ -76,23 +76,40 @@ pub fn to_value(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// This is required to support the external type as a type argument in a
 /// registered function.
 ///
-/// This might be **deprecated** once (or if) [specialization] lands.
+/// ## `#[rune(name = "..")]` attribute
 ///
-/// [specialization]: https://github.com/rust-lang/rust/issues/31844
+/// The name of a type defaults to its identifiers, so `struct Foo {}` would be
+/// given the name `"Foo"`.
+///
+/// This can be overrided with the `#[rune(name = "...")]` attribute:
+///
+/// ```rust
+/// use runestick::Any;
+///
+/// #[derive(Any)]
+/// #[rune(name = "Bar")]
+/// struct Foo {
+/// }
+///
+/// fn install() -> Result<runestick::Module, runestick::ContextError> {
+///     let mut module = runestick::Module::empty();
+///     module.ty::<Foo>()?;
+///     Ok(module)
+/// }
+/// ```
 #[proc_macro_derive(Any, attributes(rune))]
 pub fn any(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input = syn::parse_macro_input!(input as syn::DeriveInput);
-    external::expand(&internals::RUNESTICK, &input.ident)
-        .unwrap_or_else(to_compile_errors)
-        .into()
+    let derive = syn::parse_macro_input!(input as any::Derive);
+    derive.expand().unwrap_or_else(to_compile_errors).into()
 }
 
 /// Internal macro to implement external.
 #[proc_macro]
 #[doc(hidden)]
-pub fn __internal_impl_external(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let ty = syn::parse_macro_input!(input as syn::Type);
-    external::expand(&quote!(crate), &ty)
+pub fn __internal_impl_any(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let internal_call = syn::parse_macro_input!(input as any::InternalCall);
+    internal_call
+        .expand()
         .unwrap_or_else(to_compile_errors)
         .into()
 }
