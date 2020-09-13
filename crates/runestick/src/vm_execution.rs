@@ -19,6 +19,7 @@ impl VmExecution {
         }
     }
 
+
     /// Get the current virtual machine mutably.
     pub fn vm_mut(&mut self) -> Result<&mut Vm, VmError> {
         match self.vms.last_mut() {

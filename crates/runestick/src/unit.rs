@@ -55,6 +55,7 @@ impl Unit {
         }
     }
 
+
     /// Access the type for the given language item.
     pub fn lookup_type(&self, hash: Hash) -> Option<&UnitTypeInfo> {
         self.types.get(&hash)
@@ -127,7 +128,70 @@ impl Unit {
     pub fn lookup(&self, hash: Hash) -> Option<UnitFn> {
         self.functions.get(&hash).copied()
     }
+
+
+    /// Merge a unit with another unit
+    pub fn merge(&mut self, other: Unit) -> Result<(), VmError> {
+          let       Unit  {
+             mut instructions,
+              functions,
+              types,
+              static_strings,
+              static_bytes,
+              static_object_keys,
+              debug: _,
+          } = other;
+        
+       for (hash, unitfn) in functions.into_iter() {
+            self.functions.insert(hash, unitfn);
+        }
+        for (ty, ty_info) in types.into_iter() {
+            self.types.insert(ty, ty_info);
+        }
+
+        instructions.extend(self.instructions.drain(..));
+        self.instructions = instructions;
+
+       use std::iter::FromIterator;
+        let mut set = std::collections::HashSet::new();
+
+        self.static_strings = static_strings.into_iter().chain(self.static_strings.drain(..))
+            .filter(|s| {
+                set.insert(s.hash())
+            }).collect::<Vec<_>>();
+        self.static_strings.sort_unstable();
+
+        let mut set = std::collections::HashSet::new();
+
+        self.static_bytes = static_bytes.into_iter()
+            .chain( self.static_bytes.drain(..))
+            .filter(|s| {
+                if !set.contains(s) {
+                    set.insert(s.clone());
+                    true
+                } else {
+                    false
+                }
+            }).collect::<Vec<_>>();
+        self.static_bytes.sort_unstable();
+
+        let mut set = std::collections::HashSet::new();
+        self.static_object_keys = static_object_keys.into_iter()
+            .chain(self.static_object_keys.drain(..))
+            .filter(|s| {
+                if !set.contains(s) {
+                    set.insert(s.clone());
+                    true
+                } else {
+                    false
+                }            }).collect::<Vec<_>>();
+        self.static_object_keys.sort_unstable();
+        Ok(())
+    }
+
+
 }
+
 
 /// The kind and necessary information on registered functions.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

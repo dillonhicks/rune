@@ -4,7 +4,7 @@ use std::fmt;
 use std::ops;
 
 /// Struct representing a static string.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct StaticString {
     inner: String,
     hash: Hash,
@@ -27,6 +27,7 @@ impl StaticString {
         self.hash
     }
 }
+
 
 impl AsRef<String> for StaticString {
     fn as_ref(&self) -> &String {

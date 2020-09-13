@@ -328,6 +328,7 @@ impl UnitBuilder {
         this
     }
 
+
     /// Convert into a runtime unit, shedding our build metadata in the process.
     pub fn into_unit(mut self) -> Unit {
         if let Some(debug) = &mut self.debug {

@@ -7,6 +7,7 @@ members = [
     "crates/rune-macros",
     "crates/rune-testing",
     "crates/rune",
+    "crates/rune-interpreter",
     "crates/rune-cli",
 ]
 
@@ -17,5 +18,6 @@ default-members = [
     "crates/rune-macros",
     "crates/rune-testing",
     "crates/rune",
+    "crates/rune-interpreter",
     "crates/rune-cli",
 ]

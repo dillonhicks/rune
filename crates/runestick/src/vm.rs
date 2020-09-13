@@ -41,6 +41,7 @@ impl Vm {
         }
     }
 
+
     /// Run the given vm to completion.
     ///
     /// If any async instructions are encountered, this will error.
@@ -94,6 +95,12 @@ impl Vm {
         &self.unit
     }
 
+
+    /// Access the underlying unit of the virtual machine.
+    pub fn unit_mut(&mut self) -> &mut Arc<Unit> {
+        &mut self.unit
+    }
+
     /// Reset this virtual machine, freeing all memory used.
     pub fn clear(&mut self) {
         self.ip = 0;
@@ -115,6 +122,11 @@ impl Vm {
         };
 
         Ok(())
+    }
+
+    /// Reset the instruction pointer to 0
+    pub fn reset_ip(&mut self) {
+        self.ip = 0;
     }
 
     /// Call the function identified by the given name.
