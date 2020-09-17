@@ -24,6 +24,11 @@ impl Warning {
             WarningKind::TemplateWithoutExpansions { span, .. } => *span,
             WarningKind::RemoveTupleCallParams { span, .. } => *span,
             WarningKind::UnecessarySemiColon { span, .. } => *span,
+            WarningKind::UnstableFeature {
+                name: _,
+                span,
+                context: _,
+            } => *span,
         }
     }
 }
@@ -72,7 +77,18 @@ pub enum WarningKind {
         /// Span where the semi-colon is.
         span: Span,
     },
+    /// Unstable language feature
+    #[error("unstable language feature {name:?}`")]
+    UnstableFeature {
+        /// The name of the feature
+        name: &'static str,
+        /// Span that caused the error.
+        span: Span,
+        /// The context in which it is used.
+        context: Option<Span>,
+    },
 }
+
 /// Compilation warnings.
 #[derive(Debug, Clone, Default)]
 pub struct Warnings {
@@ -134,6 +150,26 @@ impl Warnings {
             w.push(Warning {
                 source_id,
                 kind: WarningKind::NotUsed { span, context },
+            });
+        }
+    }
+
+    /// Indicate use of an incomplete or unstable language feature
+    pub fn unstable_feature(
+        &mut self,
+        source_id: usize,
+        name: &'static str,
+        span: Span,
+        context: Option<Span>,
+    ) {
+        if let Some(w) = &mut self.warnings {
+            w.push(Warning {
+                source_id,
+                kind: WarningKind::UnstableFeature {
+                    name,
+                    span,
+                    context,
+                },
             });
         }
     }

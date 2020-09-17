@@ -12,7 +12,12 @@ pub struct ItemEnum {
     /// The open brace of the declaration.
     pub open: ast::OpenBrace,
     /// Variants in the declaration.
-    pub variants: Vec<(ast::Ident, ItemEnumVariant, Option<ast::Comma>)>,
+    pub variants: Vec<(
+        ast::Attributes,
+        ast::Ident,
+        ItemEnumVariant,
+        Option<ast::Comma>,
+    )>,
     /// The close brace in the declaration.
     pub close: ast::CloseBrace,
 }
@@ -31,6 +36,7 @@ impl Spanned for ItemEnum {
 /// use rune::{parse_all, ast};
 ///
 /// parse_all::<ast::ItemEnum>("enum Foo { Bar(a), Baz(b), Empty() }").unwrap();
+/// parse_all::<ast::ItemEnum>("enum Foo { Bar(a), Baz(b), #[default_value = \"zombie\"] Empty() }").unwrap();
 /// ```
 impl Parse for ItemEnum {
     fn parse(parser: &mut Parser<'_>) -> Result<Self, ParseError> {
@@ -41,6 +47,7 @@ impl Parse for ItemEnum {
         let mut variants = Vec::new();
 
         while !parser.peek::<ast::CloseBrace>()? {
+            let attrs = parser.parse()?;
             let name = parser.parse()?;
             let variant = parser.parse()?;
 
@@ -52,7 +59,7 @@ impl Parse for ItemEnum {
 
             let done = comma.is_none();
 
-            variants.push((name, variant, comma));
+            variants.push((attrs, name, variant, comma));
 
             if done {
                 break;
@@ -77,7 +84,8 @@ impl IntoTokens for ItemEnum {
         self.name.into_tokens(context, stream);
         self.open.into_tokens(context, stream);
 
-        for (variant, body, comma) in &self.variants {
+        for (attrs, variant, body, comma) in &self.variants {
+            attrs.into_tokens(context, stream);
             variant.into_tokens(context, stream);
             body.into_tokens(context, stream);
             comma.into_tokens(context, stream);

@@ -1,0 +1,28 @@
+// Attributes
+#![feature(meme_powered)]
+#![allow(attributes)]
+#![abused_feature1 = [1,3,4,5]]
+
+#[doc = "oooh shiny!"]
+use json;
+
+#[abi(C11)]
+struct Potato { #[abi(c_type = "uint32_t")] a, b }
+
+
+#[x = #{"key": Potato}]
+enum Monster {
+    #[ rust_type = "std::string::String" ]
+    S ,
+}
+
+#[cfg(test)]
+mod tests {
+    fn test() {}
+}
+
+
+#[wasm::bindgen]
+fn main() {
+    println("attributes and stuff")
+}

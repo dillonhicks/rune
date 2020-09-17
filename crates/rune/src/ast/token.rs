@@ -304,6 +304,7 @@ kinds! {
     Virtual, "The `virtual` keyword.",
     While, "The `while` keyword.",
     Yield, "The `yield` keyword.",
+    EOF, "The symbolic end of  a file.",
 }
 
 impl Kind {
@@ -464,6 +465,7 @@ impl fmt::Display for Kind {
             Self::Virtual => write!(f, "virtual")?,
             Self::While => write!(f, "while")?,
             Self::Yield => write!(f, "yield")?,
+            Self::EOF => {}
         }
 
         Ok(())

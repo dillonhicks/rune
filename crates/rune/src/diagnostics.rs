@@ -84,6 +84,18 @@ impl EmitDiagnostics for Warnings {
 
                     *context
                 }
+                WarningKind::UnstableFeature {
+                    name,
+                    span,
+                    context,
+                } => {
+                    labels.push(
+                        Label::primary(w.source_id, span.start..span.end)
+                            .with_message(format!("use of unstable language feature {:?}", name)),
+                    );
+
+                    *context
+                }
                 WarningKind::LetPatternMightPanic { span, context } => {
                     labels.push(
                         Label::primary(w.source_id, span.start..span.end)

@@ -79,6 +79,20 @@ pub enum ParseErrorKind {
         /// The actual token kind.
         actual: ast::Kind,
     },
+    /// Expected a token that was not a delimter
+    #[error("unexpected delimiter `{actual}`")]
+    UnexpectedDelimiter {
+        /// The actual token that was encountered.
+        actual: ast::Kind,
+    },
+    /// Expected a token that was not a delimter
+    #[error("unexpected delimiter `{actual}`: {reason}")]
+    UnexpectedToken {
+        /// The actual token that was encountered.
+        actual: ast::Kind,
+        /// The message indicating why the token was not expected
+        reason: &'static str,
+    },
     /// Error encountered when we see a string escape sequence without a
     /// character being escaped.
     #[error("expected escape")]
@@ -163,6 +177,12 @@ pub enum ParseErrorKind {
         /// The actual token that was encountered.
         actual: ast::Kind,
     },
+    /// Expected a literal.
+    #[error("expected a literal value but got `{actual}`")]
+    ExpectedLit {
+        /// The actual token that was encountered.
+        actual: ast::Kind,
+    },
     /// Expected a valid object key.
     #[error("expected an object key (string or identifier) but got `{actual}`")]
     ExpectedLitObjectKey {
@@ -204,6 +224,9 @@ pub enum ParseErrorKind {
     /// A bad byte literal.
     #[error("bad byte literal")]
     BadByteLiteral,
+    /// A bad literal value
+    #[error("bad literal value")]
+    BatLiteral,
     /// We tried to parse a unicode escape in a byte sequence.
     #[error("unicode escapes are not supported as a byte or byte string")]
     UnicodeEscapeNotSupported,

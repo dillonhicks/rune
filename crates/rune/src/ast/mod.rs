@@ -3,6 +3,7 @@
 use crate::{Parse, ParseError, ParseErrorKind, Parser, Peek};
 use runestick::Span;
 
+mod attribute;
 mod block;
 mod condition;
 mod expr;
@@ -43,6 +44,7 @@ mod item_mod;
 mod item_struct;
 mod item_use;
 mod label;
+mod lit;
 mod lit_bool;
 mod lit_byte;
 mod lit_byte_str;
@@ -66,6 +68,7 @@ mod stmt;
 mod token;
 pub(super) mod utils;
 
+pub use self::attribute::{Attribute, Attributes};
 pub use self::block::Block;
 pub use self::condition::Condition;
 pub use self::expr::Expr;
@@ -106,6 +109,7 @@ pub use self::item_mod::{ItemMod, ItemModBody};
 pub use self::item_struct::{ItemStruct, ItemStructBody, StructBody, TupleBody};
 pub use self::item_use::{ItemUse, ItemUseComponent};
 pub use self::label::Label;
+pub use self::lit::Lit;
 pub use self::lit_bool::LitBool;
 pub use self::lit_byte::LitByte;
 pub use self::lit_byte_str::LitByteStr;
@@ -228,6 +232,7 @@ decl_tokens! {
     (Mul, "Multiply `*` operator.", Kind::Star),
     (Mod, "The `mod` keyword.", Kind::Mod),
     (Bang, "The `!` operator.", Kind::Bang),
+    (EOF, "The symbolic end of file.", Kind::EOF),
 }
 
 #[cfg(test)]

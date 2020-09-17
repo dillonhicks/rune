@@ -530,6 +530,14 @@ impl Index<ast::Condition> for Indexer<'_> {
 impl Index<ast::Item> for Indexer<'_> {
     fn index(&mut self, decl: &ast::Item) -> CompileResult<()> {
         match decl {
+            ast::Item::ItemAttribute(attribute) => {
+                self.warnings.unstable_feature(
+                    self.source_id,
+                    "attributes",
+                    attribute.span(),
+                    None,
+                );
+            }
             ast::Item::ItemUse(import) => {
                 self.queue.push_back(Task::Import(Import {
                     item: self.items.item(),
@@ -544,7 +552,6 @@ impl Index<ast::Item> for Indexer<'_> {
 
                 let span = decl_enum.span();
                 let enum_item = self.items.item();
-
                 self.query.index_enum(
                     enum_item.clone(),
                     self.source.clone(),
@@ -552,12 +559,11 @@ impl Index<ast::Item> for Indexer<'_> {
                     span,
                 )?;
 
-                for (variant, body, _) in &decl_enum.variants {
+                for (_, variant, body, _) in &decl_enum.variants {
                     let variant_ident = variant.resolve(&self.storage, &*self.source)?;
                     let _guard = self.items.push_name(variant_ident.as_ref());
 
                     let span = variant.span();
-
                     self.query.index_variant(
                         self.items.item(),
                         enum_item.clone(),
@@ -580,7 +586,7 @@ impl Index<ast::Item> for Indexer<'_> {
                 )?;
             }
             ast::Item::ItemFn(decl_fn) => {
-                self.index(decl_fn)?;
+                self.index(&**decl_fn)?;
             }
             ast::Item::ItemImpl(decl_impl) => {
                 let mut guards = Vec::new();
