@@ -5,12 +5,26 @@ use runestick::Span;
 /// A module declaration.
 #[derive(Debug, Clone)]
 pub struct ItemMod {
+    /// The attributes of the module
+    pub attributes: Vec<ast::Attribute>,
     /// The `mod` keyword.
     pub mod_: ast::Mod,
     /// The name of the mod.
     pub name: ast::Ident,
     /// The optional body of the module declaration.
     pub body: ItemModBody,
+}
+
+impl ItemMod {
+    /// Parse a `mod` item with the given attributes
+    pub fn parse_with_attributes(parser: &mut Parser<'_>, attributes: Vec<ast::Attribute>) -> Result<Self, ParseError> {
+        Ok(Self {
+            attributes,
+            mod_: parser.parse()?,
+            name: parser.parse()?,
+            body: parser.parse()?,
+        })
+    }
 }
 
 impl Spanned for ItemMod {
@@ -21,11 +35,8 @@ impl Spanned for ItemMod {
 
 impl Parse for ItemMod {
     fn parse(parser: &mut Parser) -> Result<Self, ParseError> {
-        Ok(Self {
-            mod_: parser.parse()?,
-            name: parser.parse()?,
-            body: parser.parse()?,
-        })
+        let attributes = parser.parse()?;
+        Self::parse_with_attributes(parser, attributes)
     }
 }
 

@@ -5,6 +5,8 @@ use runestick::Span;
 /// A block of expressions.
 #[derive(Debug, Clone)]
 pub struct Block {
+    /// The attributes for a block
+    pub attributes: Vec<ast::Attribute>,
     /// The close brace.
     pub open: ast::OpenBrace,
     /// Statements in the block.
@@ -82,11 +84,23 @@ impl Spanned for Block {
 ///     }
 /// "#).unwrap();
 /// assert_eq!(block.statements.len(), 3);
+/// let block = parse_all::<ast::Block>(r#"
+///     #[target = "x86_64"]
+///     #[cfg(debug)] {
+///         let foo = 42;
+///         let bar = "string";
+///         baz
+///     }
+/// "#).unwrap();
+/// assert_eq!(block.statements.len(), 3);
+/// assert_eq!(block.attributes.len(), 2);
 /// ```
 impl Parse for Block {
     fn parse(parser: &mut Parser<'_>) -> Result<Self, ParseError> {
+
         let mut statements = Vec::new();
 
+        let attributes = parser.parse()?;
         let open = parser.parse()?;
         let mut must_be_last = None;
 
@@ -132,6 +146,7 @@ impl Parse for Block {
         let close = parser.parse()?;
 
         Ok(Block {
+            attributes,
             open,
             statements,
             close,

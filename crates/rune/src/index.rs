@@ -528,16 +528,8 @@ impl Index<ast::Condition> for Indexer<'_> {
 }
 
 impl Index<ast::Item> for Indexer<'_> {
-    fn index(&mut self, decl: &ast::Item) -> CompileResult<()> {
-        match decl {
-            ast::Item::ItemAttribute(attribute) => {
-                self.warnings.unstable_feature(
-                    self.source_id,
-                    "attributes",
-                    attribute.span(),
-                    None,
-                );
-            }
+    fn index(&mut self, item: &ast::Item) -> CompileResult<()> {
+        match item {
             ast::Item::ItemUse(import) => {
                 self.queue.push_back(Task::Import(Import {
                     item: self.items.item(),

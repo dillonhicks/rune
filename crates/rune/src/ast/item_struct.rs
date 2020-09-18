@@ -5,12 +5,27 @@ use runestick::Span;
 /// A struct declaration.
 #[derive(Debug, Clone)]
 pub struct ItemStruct {
+    /// The attributes for the struct
+    pub attributes: Vec<ast::Attribute>,
     /// The `struct` keyword.
     pub struct_: ast::Struct,
     /// The identifier of the struct declaration.
     pub ident: ast::Ident,
     /// The body of the struct.
     pub body: ItemStructBody,
+}
+
+impl ItemStruct {
+    /// Parse a `struct` item with the given attributes
+    pub fn parse_with_attributes(parser: &mut Parser, attributes: Vec<ast::Attribute>) -> Result<Self, ParseError> {
+        Ok(Self {
+            attributes,
+            struct_: parser.parse()?,
+            ident: parser.parse()?,
+            body: parser.parse()?,
+        })
+
+    }
 }
 
 impl Spanned for ItemStruct {
@@ -25,6 +40,7 @@ impl Spanned for ItemStruct {
     }
 }
 
+
 /// Parse implementation for a struct.
 ///
 /// # Examples
@@ -36,20 +52,18 @@ impl Spanned for ItemStruct {
 /// parse_all::<ast::ItemStruct>("struct Foo ( a, b, c );").unwrap();
 /// parse_all::<ast::ItemStruct>("struct Foo { a, b, c }").unwrap();
 /// parse_all::<ast::ItemStruct>("struct Foo { #[default_value = 1] a, b, c }").unwrap();
-/// parse_all::<ast::ItemStruct>("struct Foo ( #[default_value = \"x\" ] a, b, c );").unwrap();
+/// parse_all::<ast::ItemStruct>("#[alpha] struct Foo ( #[default_value = \"x\" ] a, b, c );").unwrap();
 /// ```
 impl Parse for ItemStruct {
     fn parse(parser: &mut Parser<'_>) -> Result<Self, ParseError> {
-        Ok(Self {
-            struct_: parser.parse()?,
-            ident: parser.parse()?,
-            body: parser.parse()?,
-        })
+        let attributes = parser.parse()?;
+        Self::parse_with_attributes(parser, attributes)
     }
 }
 
 impl IntoTokens for ItemStruct {
     fn into_tokens(&self, context: &mut MacroContext, stream: &mut TokenStream) {
+        self.attributes.into_tokens(context, stream);
         self.struct_.into_tokens(context, stream);
         self.ident.into_tokens(context, stream);
         self.body.into_tokens(context, stream);
