@@ -1,6 +1,6 @@
 //! Worker used by compiler.
 
-use runestick::{Component, Context, Item, Source, Span};
+use runestick::{Component, Context, Item, Source, Span, SourceId};
 
 use crate::ast;
 use crate::collections::HashMap;
@@ -12,7 +12,7 @@ use crate::query::Query;
 use crate::CompileResult;
 use crate::{
     CompileError, CompileErrorKind, CompileVisitor, Errors, LoadError, MacroContext, Options,
-    Resolve as _, SourceId, SourceLoader, Sources, Spanned as _, Storage, UnitBuilder, Warnings,
+    Resolve as _, SourceLoader, Sources, Spanned as _, Storage, UnitBuilder, Warnings,
 };
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -152,6 +152,7 @@ impl<'a> Worker<'a> {
                     log::trace!("index: {}", item);
 
                     let mut indexer = Indexer {
+                        root: None,
                         storage: self.query.storage.clone(),
                         loaded: &mut self.loaded,
                         query: &mut self.query,

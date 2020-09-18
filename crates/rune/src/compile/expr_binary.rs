@@ -10,6 +10,15 @@ impl Compile<(&ast::ExprBinary, Needs)> for Compiler<'_> {
     fn compile(&mut self, (expr_binary, needs): (&ast::ExprBinary, Needs)) -> CompileResult<()> {
         let span = expr_binary.span();
         log::trace!("ExprBinary => {:?}", self.source.source(span));
+        log::trace!(
+            "ExprBinary {{ lhs => {:?} }}",
+            self.source.source(expr_binary.lhs.span())
+        );
+        log::trace!("ExprBinary {{ op => {:?} }}", expr_binary.op);
+        log::trace!(
+            "ExprBinary {{ rhs => {:?} }}",
+            self.source.source(expr_binary.rhs.span())
+        );
 
         // Special expressions which operates on the stack in special ways.
         if expr_binary.op.is_assign() {
@@ -102,7 +111,7 @@ fn compile_assign_binop(
                 let ident = path.first.resolve(this.storage, &*this.source)?;
                 let var = this
                     .scopes
-                    .get_var(&*ident, this.source.url(), this.visitor, span)?;
+                    .get_var(&*ident, this.source_id, this.visitor, span)?;
                 this.asm.push(Inst::Replace { offset: var.offset }, span);
 
                 true
@@ -168,7 +177,7 @@ fn compile_assign_binop(
                 let ident = path.first.resolve(this.storage, &*this.source)?;
                 let var = this
                     .scopes
-                    .get_var(&*ident, this.source.url(), this.visitor, span)?;
+                    .get_var(&*ident, this.source_id, this.visitor, span)?;
 
                 Some(InstTarget::Offset(var.offset))
             }

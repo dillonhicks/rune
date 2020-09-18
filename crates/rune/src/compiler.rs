@@ -414,11 +414,7 @@ impl<'a> Compiler<'a> {
 
         if let Some(meta) = self.context.lookup_meta(name) {
             log::trace!("found in context: {:?}", meta);
-
-            if let Some(url) = self.source.url() {
-                self.visitor.visit_meta(url, &meta, span);
-            }
-
+            self.visitor.visit_meta(self.source_id, &meta, span);
             return Ok(Some(meta));
         }
 
@@ -430,11 +426,7 @@ impl<'a> Compiler<'a> {
 
             if let Some(meta) = self.query.query_meta(&current)? {
                 log::trace!("found in query: {:?}", meta);
-
-                if let Some(url) = self.source.url() {
-                    self.visitor.visit_meta(url, &meta, span);
-                }
-
+                self.visitor.visit_meta(self.source_id, &meta, span);
                 return Ok(Some(meta));
             }
 

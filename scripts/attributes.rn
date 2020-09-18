@@ -24,5 +24,5 @@ mod tests {
 
 #[wasm::bindgen]
 fn main() {
-    println("attributes and stuff")
+    println("attributes, attributes everywhere....")
 }
