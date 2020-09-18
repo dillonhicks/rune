@@ -678,6 +678,9 @@ impl Index<ast::Item> for Indexer<'_> {
                     kind: MacroKind::Item,
                 }));
             }
+            ast::Item::Block(block) => {
+                self.index(&**block)?;
+            }
         }
 
         Ok(())
