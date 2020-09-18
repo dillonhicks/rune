@@ -154,26 +154,6 @@ impl Warnings {
         }
     }
 
-    /// Indicate use of an incomplete or unstable language feature
-    pub fn unstable_feature(
-        &mut self,
-        source_id: usize,
-        name: &'static str,
-        span: Span,
-        context: Option<Span>,
-    ) {
-        if let Some(w) = &mut self.warnings {
-            w.push(Warning {
-                source_id,
-                kind: WarningKind::UnstableFeature {
-                    name,
-                    span,
-                    context,
-                },
-            });
-        }
-    }
-
     /// Indicate that a binding pattern might panic.
     ///
     /// Like `let (a, b) = value`.

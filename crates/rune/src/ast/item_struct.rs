@@ -17,14 +17,16 @@ pub struct ItemStruct {
 
 impl ItemStruct {
     /// Parse a `struct` item with the given attributes
-    pub fn parse_with_attributes(parser: &mut Parser, attributes: Vec<ast::Attribute>) -> Result<Self, ParseError> {
+    pub fn parse_with_attributes(
+        parser: &mut Parser,
+        attributes: Vec<ast::Attribute>,
+    ) -> Result<Self, ParseError> {
         Ok(Self {
             attributes,
             struct_: parser.parse()?,
             ident: parser.parse()?,
             body: parser.parse()?,
         })
-
     }
 }
 
@@ -39,7 +41,6 @@ impl Spanned for ItemStruct {
         }
     }
 }
-
 
 /// Parse implementation for a struct.
 ///
@@ -133,7 +134,7 @@ pub struct TupleBody {
     /// The opening paren.
     pub open: ast::OpenParen,
     /// Fields in the variant.
-    pub fields: Vec<(ast::Attributes, ast::Ident, Option<ast::Comma>)>,
+    pub fields: Vec<(Vec<ast::Attribute>, ast::Ident, Option<ast::Comma>)>,
     /// The close paren.
     pub close: ast::CloseParen,
 }
@@ -208,7 +209,7 @@ pub struct StructBody {
     /// The opening brace.
     pub open: ast::OpenBrace,
     /// Fields in the variant.
-    pub fields: Vec<(ast::Attributes, ast::Ident, Option<ast::Comma>)>,
+    pub fields: Vec<(Vec<ast::Attribute>, ast::Ident, Option<ast::Comma>)>,
     /// The close brace.
     pub close: ast::CloseBrace,
 }

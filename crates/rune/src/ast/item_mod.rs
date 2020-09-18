@@ -5,7 +5,7 @@ use runestick::Span;
 /// A module declaration.
 #[derive(Debug, Clone)]
 pub struct ItemMod {
-    /// The attributes of the module
+    /// The *inner* attributes are applied to the module  `#[cfg(test)] mod tests {  }`
     pub attributes: Vec<ast::Attribute>,
     /// The `mod` keyword.
     pub mod_: ast::Mod,
@@ -17,7 +17,10 @@ pub struct ItemMod {
 
 impl ItemMod {
     /// Parse a `mod` item with the given attributes
-    pub fn parse_with_attributes(parser: &mut Parser<'_>, attributes: Vec<ast::Attribute>) -> Result<Self, ParseError> {
+    pub fn parse_with_attributes(
+        parser: &mut Parser<'_>,
+        attributes: Vec<ast::Attribute>,
+    ) -> Result<Self, ParseError> {
         Ok(Self {
             attributes,
             mod_: parser.parse()?,
@@ -33,6 +36,28 @@ impl Spanned for ItemMod {
     }
 }
 
+/// Parse a `mod` item
+///
+/// # Examples
+///
+/// ```rust
+/// use rune::{parse_all, ast, ParseError};
+///
+/// parse_all::<ast::ItemMod>("mod ruins {}").unwrap();
+///
+/// let item = parse_all::<ast::ItemMod>("#[cfg(test)] mod tests {}").unwrap();
+/// assert_eq!(item.attributes.len(), 1);
+///
+/// let item = parse_all::<ast::ItemMod>("mod whiskey_bravo { #![allow(dead_code)] fn x() {} }").unwrap();
+/// assert_eq!(item.attributes.len(), 0);
+///
+/// if let ast::ItemModBody::InlineBody(body) = &item.body {
+///     assert_eq!(body.file.attributes.len(), 1);
+/// } else {
+///     panic!("module body was not the ItemModBody::InlineBody variant");
+/// }
+///
+/// ```
 impl Parse for ItemMod {
     fn parse(parser: &mut Parser) -> Result<Self, ParseError> {
         let attributes = parser.parse()?;
@@ -42,6 +67,7 @@ impl Parse for ItemMod {
 
 impl IntoTokens for ItemMod {
     fn into_tokens(&self, context: &mut crate::MacroContext, stream: &mut crate::TokenStream) {
+        self.attributes.into_tokens(context, stream);
         self.mod_.into_tokens(context, stream);
         self.name.into_tokens(context, stream);
         self.body.into_tokens(context, stream);

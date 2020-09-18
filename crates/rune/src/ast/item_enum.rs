@@ -15,7 +15,7 @@ pub struct ItemEnum {
     pub open: ast::OpenBrace,
     /// Variants in the declaration.
     pub variants: Vec<(
-        ast::Attributes,
+        Vec<ast::Attribute>,
         ast::Ident,
         ItemEnumVariant,
         Option<ast::Comma>,
@@ -26,7 +26,10 @@ pub struct ItemEnum {
 
 impl ItemEnum {
     /// Parse a `enum` item with the given attributes
-    pub fn parse_with_attributes(parser: &mut Parser<'_>, attributes: Vec<ast::Attribute>) -> Result< Self, ParseError> {
+    pub fn parse_with_attributes(
+        parser: &mut Parser<'_>,
+        attributes: Vec<ast::Attribute>,
+    ) -> Result<Self, ParseError> {
         let enum_ = parser.parse()?;
         let name = parser.parse()?;
         let open = parser.parse()?;

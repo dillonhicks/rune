@@ -10,9 +10,9 @@
 // See: https://doc.rust-lang.org/reference/attributes.html
 //
 //
-// Valid placement for attributes:
+// Valid placement attributes:
 // 
-// 1. top level Outer attributes
+// 1. top of file/module "outer" attributes
 // 2. attrs on `use` items
 // 3. on `struct` items
 // 4. on `struct` fields
@@ -150,16 +150,11 @@ class StructWithCustomSyntax:
 ")]
 struct StructWithCustomSyntaxAttribute;
 
-            //fn xyz(a, b) { b / a + 1 }
-            //fn xulu() { {let a = || xyz(); a()}({let b = || 2; b()}, {let c = || 6; c()}) }
 
 /// 5.4. also works on async `fn` items
 #[wasm::bindgen]
 async fn main() {
-    println(`{if #{} is Object { "true" } else { "false" } }`);
     println(tests::test());
     println(`{definetypeinfunction().to_string()}`);
     println("attributes, attributes everywhere....");
-    {} is Object;
-    //println(`{xulu()}`);
 }

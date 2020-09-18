@@ -1,25 +1,9 @@
 use crate::ast;
+use crate::ast::utils::{CloseDelim, OpenDelim};
 use crate::{
     IntoTokens, MacroContext, Parse, ParseError, ParseErrorKind, Parser, Peek, Spanned, TokenStream,
 };
 use runestick::Span;
-use crate::ast::utils::{OpenDelim, CloseDelim};
-
-fn eof_token(parser: &Parser<'_>) -> ast::Token {
-    ast::Token {
-        span: parser.source.end(),
-        kind: ast::Kind::EOF,
-    }
-}
-
-/// Convenience for stacked attributes:
-///
-/// ```text
-/// #[derive(Debug)]
-/// #[derive(Clone)]
-/// struct Foo;
-/// ```
-pub type Attributes = Vec<Attribute>;
 
 /// Attribute like `#[derive(Debug)]`
 #[derive(Debug, Clone)]
@@ -147,9 +131,7 @@ impl Parse for AttrInput {
             let token = parser.token_peek_eof()?;
             Err(ParseError::new(
                 token,
-                ParseErrorKind::ExpectedAttributeInput {
-                    actual: token.kind,
-                },
+                ParseErrorKind::ExpectedAttributeInput { actual: token.kind },
             ))
         }
     }
@@ -226,7 +208,6 @@ pub struct NonDelimiter(ast::Token);
 
 impl Parse for NonDelimiter {
     fn parse(parser: &mut Parser<'_>) -> Result<Self, ParseError> {
-
         if parser.peek::<NonDelimiter>()? {
             Ok(NonDelimiter(parser.token_next()?))
         } else {
@@ -272,9 +253,8 @@ impl Parse for TokenTree {
         } else if parser.peek::<DelimTokenTree>()? {
             Ok(TokenTree::DelimTokenTree(parser.parse()?))
         } else {
-            let token = parser
-                .token_peek_eof()
-                .unwrap_or_else(|_| eof_token(parser));
+            let token = parser.token_peek_eof()?;
+
             Err(ParseError::new(
                 token,
                 ParseErrorKind::UnexpectedToken {
@@ -301,7 +281,6 @@ impl IntoTokens for TokenTree {
         }
     }
 }
-
 
 /// ```text
 /// DelimTokenTree :
@@ -374,6 +353,21 @@ impl IntoTokens for DelimTokenTree {
     }
 }
 
+/// Tag struct to assist parsing Outer `#![...]` attributes at the top of a module/file
+pub struct OuterAttribute;
+
+impl Peek for OuterAttribute {
+    fn peek(t1: Option<ast::Token>, t2: Option<ast::Token>) -> bool {
+        let kind1 = t1.map(|t| t.kind);
+        let kind2 = t2.map(|t| t.kind);
+
+        match (kind1, kind2) {
+            (Some(ast::Kind::Pound), Some(ast::Kind::Bang)) => true,
+            _ => false,
+        }
+    }
+}
+
 #[test]
 fn test_attr_input() {
     crate::parse_all::<AttrInput>("= 1").unwrap();
@@ -385,7 +379,7 @@ fn test_attr_input() {
 }
 
 #[test]
-fn test_attribute() {
+fn test_parse_attribute() {
     const TEST_STRINGS: &[&'static str] = &[
         "#[foo]",
         "#[a::b::c]",

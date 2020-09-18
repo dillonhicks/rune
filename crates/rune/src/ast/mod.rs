@@ -68,7 +68,7 @@ mod stmt;
 mod token;
 pub(super) mod utils;
 
-pub use self::attribute::{Attribute, Attributes};
+pub use self::attribute::{Attribute, OuterAttribute};
 pub use self::block::Block;
 pub use self::condition::Condition;
 pub use self::expr::Expr;
@@ -115,7 +115,9 @@ pub use self::lit_byte::LitByte;
 pub use self::lit_byte_str::LitByteStr;
 pub use self::lit_char::LitChar;
 pub use self::lit_number::LitNumber;
-pub use self::lit_object::{LitObject, LitObjectFieldAssign, LitObjectIdent, LitObjectKey, AnonymousLitObject};
+pub use self::lit_object::{
+    AnonymousLitObject, LitObject, LitObjectFieldAssign, LitObjectIdent, LitObjectKey,
+};
 pub use self::lit_str::LitStr;
 pub use self::lit_template::{LitTemplate, Template, TemplateComponent};
 pub use self::lit_tuple::LitTuple;
