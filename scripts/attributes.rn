@@ -1,28 +1,49 @@
 // Attributes
+
+// top level "Outer" attributes
 #![feature(meme_powered)]
 #![allow(attributes)]
 #![abused_feature1 = [1,3,4,5]]
 
+
+// attrs on `use` items
 #[doc = "oooh shiny!"]
 use json;
 
+/// attrs on `struct` items
 #[abi(C11)]
-struct Potato { #[abi(c_type = "uint32_t")] a, b }
+struct Potato {
+    // attrs on `struct` fields
+    #[abi(c_type = "uint32_t")]
+    a,
+    b
+}
 
 
+/// attrs on `enum` items
 #[x = #{"key": Potato}]
 enum Monster {
+    /// attrs on `enum` variants
     #[ rust_type = "std::string::String" ]
     S ,
 }
 
+/// attrs on `mod` items
 #[cfg(test)]
+#[doc = "yes they stack"]
 mod tests {
-    fn test() {}
+    /// attrs on `fn` items
+    #[inline]
+    fn test() {
+        /// attrs on blocks
+        #[runtime::cfg(have_tty)] {
+            println!("we did it")
+        }
+    }
 }
 
-
+/// attrs on async `fn` items
 #[wasm::bindgen]
-fn main() {
+async fn main() {
     println("attributes, attributes everywhere....")
 }
