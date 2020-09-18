@@ -19,8 +19,6 @@ impl_enum_ast! {
         ItemMod(ast::ItemMod),
         /// A macro call expanding into an item.
         MacroCall(ast::MacroCall),
-        /// A block statement, note the Expr must be the Expr::ExprBlock variant
-        Block(Box<ast::Expr>),
     }
 }
 
@@ -46,8 +44,6 @@ impl Item {
             ast::Kind::Impl => true,
             ast::Kind::Async | ast::Kind::Fn => true,
             ast::Kind::Mod => true,
-            // allow nesting blocks as items
-            // ast::Kind::Open(ast::Delimiter::Brace) => true,
             _ => ast::Attribute::peek(Some(t), t2),
         })
     }
@@ -77,11 +73,6 @@ impl Item {
                 Self::ItemMod(ast::ItemMod::parse_with_attributes(parser, attributes)?)
             }
             ast::Kind::Ident(..) => Self::MacroCall(parser.parse()?),
-            // ast::Kind::Open(ast::Delimiter::Brace) => {
-            //     let block = ast::ExprBlock::parse_with_attributes(parser, attributes)?;
-            //     let expr = ast::Expr::ExprBlock(block);
-            //     Self::Block(Box::new(expr))
-            // }
             _ => {
                 return Err(ParseError::new(
                     t,
