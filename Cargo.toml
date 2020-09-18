@@ -4,10 +4,12 @@ members = [
     "crates/rune-languageserver",
     "crates/rune-macros",
     "crates/rune-modules",
+    "crates/rune-wasm",
     "crates/rune",
     "crates/runestick-macros",
     "crates/runestick",
     "tools/builder",
+    "tools/site",
 ]
 
 default-members = [
@@ -15,6 +17,7 @@ default-members = [
     "crates/rune-languageserver",
     "crates/rune-macros",
     "crates/rune-modules",
+    "crates/rune-wasm",
     "crates/rune",
     "crates/runestick-macros",
     "crates/runestick",

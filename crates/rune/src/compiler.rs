@@ -6,7 +6,7 @@ use crate::loops::Loops;
 use crate::query::{Build, BuildEntry, Query};
 use crate::scopes::{Scope, ScopeGuard, Scopes};
 use crate::traits::Compile as _;
-use crate::worker::{Expanded, Task, Worker};
+use crate::worker::{Expanded, LoadFileKind, Task, Worker};
 use crate::CompileResult;
 use crate::{
     Assembly, CompileError, CompileErrorKind, CompileVisitor, Errors, FileSourceLoader, LoadError,
@@ -81,6 +81,7 @@ pub fn compile_with_options(
     // Queue up the initial sources to be loaded.
     for source_id in sources.source_ids() {
         queue.push_back(Task::LoadFile {
+            kind: LoadFileKind::Root,
             item: Item::new(),
             source_id,
         });

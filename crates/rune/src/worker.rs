@@ -1,10 +1,8 @@
 //! Worker used by compiler.
 
-use runestick::{Component, Context, Item, Source, Span, SourceId};
-
 use crate::ast;
 use crate::collections::HashMap;
-use crate::index::{Index, Indexer};
+use crate::index::{Index as _, Indexer};
 use crate::index_scopes::IndexScopes;
 use crate::items::Items;
 use crate::macros::MacroCompiler;
@@ -14,8 +12,10 @@ use crate::{
     CompileError, CompileErrorKind, CompileVisitor, Errors, LoadError, MacroContext, Options,
     Resolve as _, SourceLoader, Sources, Spanned as _, Storage, UnitBuilder, Warnings,
 };
+use runestick::{Component, Context, Item, Source, SourceId, Span};
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -24,29 +24,29 @@ use std::sync::Arc;
 pub(crate) enum Task {
     /// Load a file.
     LoadFile {
+        /// The kind of loaded file.
+        kind: LoadFileKind,
         /// The item of the file to load.
         item: Item,
         /// The source id of the item being loaded.
         source_id: SourceId,
     },
     /// An indexing task, which will index the specified item.
-    Index {
-        /// Item being built.
-        item: Item,
-        /// Path to index.
-        items: Items,
-        /// The source id where the item came from.
-        source_id: SourceId,
-        /// The source where the item came from.
-        source: Arc<Source>,
-        scopes: IndexScopes,
-        impl_items: Vec<Item>,
-        ast: IndexAst,
-    },
+    Index(Index),
     /// Task to process an import.
     Import(Import),
     /// Task to expand a macro. This might produce additional indexing tasks.
     ExpandMacro(Macro),
+}
+
+/// The kind of the loaded module.
+#[derive(Debug)]
+pub(crate) enum LoadFileKind {
+    /// A root file, which determined a URL root.
+    Root,
+    /// A loaded module, which inherits its root from the file it was loaded
+    /// from.
+    Module { root: Option<PathBuf> },
 }
 
 #[derive(Debug)]
@@ -106,7 +106,13 @@ impl<'a> Worker<'a> {
     pub(crate) fn run(&mut self) {
         while let Some(task) = self.queue.pop_front() {
             match task {
-                Task::LoadFile { item, source_id } => {
+                Task::LoadFile {
+                    kind,
+                    item,
+                    source_id,
+                } => {
+                    log::trace!("load file: {}", item);
+
                     let source = match self.sources.get(source_id).cloned() {
                         Some(source) => source,
                         None => {
@@ -128,9 +134,15 @@ impl<'a> Worker<'a> {
                         }
                     };
 
+                    let root = match kind {
+                        LoadFileKind::Root => source.path().map(ToOwned::to_owned),
+                        LoadFileKind::Module { root } => root,
+                    };
+
                     let items = Items::new(item.clone().into_vec());
 
-                    self.queue.push_back(Task::Index {
+                    self.queue.push_back(Task::Index(Index {
+                        root,
                         item,
                         items,
                         source_id,
@@ -138,21 +150,24 @@ impl<'a> Worker<'a> {
                         scopes: IndexScopes::new(),
                         impl_items: Default::default(),
                         ast: IndexAst::File(file),
-                    });
+                    }));
                 }
-                Task::Index {
-                    item,
-                    items,
-                    source_id,
-                    source,
-                    scopes,
-                    impl_items,
-                    ast,
-                } => {
+                Task::Index(index) => {
+                    let Index {
+                        root,
+                        item,
+                        items,
+                        source_id,
+                        source,
+                        scopes,
+                        impl_items,
+                        ast,
+                    } = index;
+
                     log::trace!("index: {}", item);
 
                     let mut indexer = Indexer {
-                        root: None,
+                        root,
                         storage: self.query.storage.clone(),
                         loaded: &mut self.loaded,
                         query: &mut self.query,
@@ -211,18 +226,20 @@ impl<'a> Worker<'a> {
                 }
                 Task::ExpandMacro(m) => {
                     let Macro {
+                        kind,
+                        root,
                         items,
                         ast,
                         source,
                         source_id,
                         scopes,
                         impl_items,
-                        kind,
                     } = m;
 
                     let item = items.item();
                     let span = ast.span();
-                    log::trace!("expanding macro: {}", item);
+
+                    log::trace!("expand macro: {} => {:?}", item, source.source(ast.span()));
 
                     match kind {
                         MacroKind::Expr => (),
@@ -287,7 +304,8 @@ impl<'a> Worker<'a> {
                         }
                     };
 
-                    self.queue.push_back(Task::Index {
+                    self.queue.push_back(Task::Index(Index {
+                        root,
                         item,
                         items,
                         source_id,
@@ -295,7 +313,7 @@ impl<'a> Worker<'a> {
                         scopes,
                         impl_items,
                         ast,
-                    });
+                    }));
                 }
             }
         }
@@ -306,6 +324,24 @@ impl<'a> Worker<'a> {
 pub(crate) enum Expanded {
     /// The expansion resulted in an expression.
     Expr(ast::Expr),
+}
+
+/// Indexing to process.
+#[derive(Debug)]
+pub(crate) struct Index {
+    /// The root URL of the file which caused this item to be indexed.
+    root: Option<PathBuf>,
+    /// Item being built.
+    item: Item,
+    /// Path to index.
+    items: Items,
+    /// The source id where the item came from.
+    source_id: SourceId,
+    /// The source where the item came from.
+    source: Arc<Source>,
+    scopes: IndexScopes,
+    impl_items: Vec<Item>,
+    ast: IndexAst,
 }
 
 /// Import to process.
@@ -402,11 +438,20 @@ pub(crate) enum MacroKind {
 
 #[derive(Debug)]
 pub(crate) struct Macro {
-    pub(crate) items: Items,
-    pub(crate) ast: ast::MacroCall,
-    pub(crate) source: Arc<Source>,
-    pub(crate) source_id: usize,
-    pub(crate) scopes: IndexScopes,
-    pub(crate) impl_items: Vec<Item>,
+    /// The kind of the macro.
     pub(crate) kind: MacroKind,
+    /// The URL root at which the macro is being expanded.
+    pub(crate) root: Option<PathBuf>,
+    /// The item path where the macro is being expanded.
+    pub(crate) items: Items,
+    /// The AST of the macro call causing the expansion.
+    pub(crate) ast: ast::MacroCall,
+    /// The source where the macro is being expanded.
+    pub(crate) source: Arc<Source>,
+    /// The source id where the macro is being expanded.
+    pub(crate) source_id: usize,
+    /// Snapshot of index scopes when the macro was being expanded.
+    pub(crate) scopes: IndexScopes,
+    /// Snapshot of impl_items when the macro was being expanded.
+    pub(crate) impl_items: Vec<Item>,
 }

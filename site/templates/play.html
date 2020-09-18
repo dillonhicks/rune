@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% import "macros.html" as macros %}
+
+{% block header %}
+  <header class="header-small">
+    <nav id="overlord" class="overlord" >
+      {{ macros::mini_logo(classes="", title=config.title, siteurl=config.base_url, logourl=config.extra.profile) }}
+    </nav>
+
+    {{ macros::nav() }}
+  </header>
+{% endblock header %}
+
+{% block content %}
+
+<div class="rune big" rune-update-url="true">
+  <div class="rune-editor big">{{config.extra.playground}}</div>
+  <div class="rune-console big">
+    <h4 class="rune-title"></h4>
+    <div class="rune-output"></div>
+  </div>
+</div>
+
+{% endblock content %}

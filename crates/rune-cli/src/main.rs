@@ -5,8 +5,12 @@
 //! <br>
 //!
 //! <div align="center">
-//! <a href="https://rune-rs.github.io/rune/">
-//!     <b>Read the Book 📖</b>
+//! <a href="https://rune-rs.github.io">
+//!     <b>Visit the site 🌐</b>
+//! </a>
+//! -
+//! <a href="https://rune-rs.github.io/bool/">
+//!     <b>Read the book 📖</b>
 //! </a>
 //! </div>
 //!
@@ -18,7 +22,7 @@
 //! </a>
 //!
 //! <a href="https://github.com/rune-rs/rune/actions">
-//!     <img alt="Book Status" src="https://github.com/rune-rs/rune/workflows/Book/badge.svg">
+//!     <img alt="Site Status" src="https://github.com/rune-rs/rune/workflows/Site/badge.svg">
 //! </a>
 //!
 //! <a href="https://crates.io/crates/rune">
