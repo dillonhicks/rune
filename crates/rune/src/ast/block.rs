@@ -16,6 +16,7 @@ pub struct Block {
 }
 
 into_tokens!(Block {
+    attributes,
     open,
     statements,
     close
@@ -48,6 +49,63 @@ impl Block {
         }
 
         true
+    }
+
+    /// Parse a block attaching the given attributes
+    pub fn parse_with_attributes(parser: &mut Parser<'_>, attributes: Vec<ast::Attribute>) -> Result<Self, ParseError> {
+
+        let mut statements = Vec::new();
+
+        let open = parser.parse()?;
+        let mut must_be_last = None;
+
+        while !parser.peek::<ast::CloseBrace>()? {
+            if ast::Item::peek_as_stmt(parser)? {
+                let decl: ast::Item = ast::Item::parse_in_nested_block(parser)?;
+
+                if let Some(span) = must_be_last {
+                    return Err(ParseError::new(
+                        span,
+                        ParseErrorKind::ExpectedBlockSemiColon {
+                            followed_span: decl.span(),
+                        },
+                    ));
+                }
+
+                statements.push(ast::Stmt::Item(decl));
+                continue;
+            }
+
+            let expr: ast::Expr = parser.parse()?;
+
+            if let Some(span) = must_be_last {
+                return Err(ParseError::new(
+                    span,
+                    ParseErrorKind::ExpectedBlockSemiColon {
+                        followed_span: expr.span(),
+                    },
+                ));
+            }
+
+            if parser.peek::<ast::SemiColon>()? {
+                statements.push(ast::Stmt::Semi(expr, parser.parse()?));
+            } else {
+                if expr.needs_semi() {
+                    must_be_last = Some(expr.span());
+                }
+
+                statements.push(ast::Stmt::Expr(expr));
+            }
+        }
+
+        let close = parser.parse()?;
+
+        Ok(Block {
+            attributes,
+            open,
+            statements,
+            close,
+        })
     }
 }
 
@@ -97,59 +155,7 @@ impl Spanned for Block {
 /// ```
 impl Parse for Block {
     fn parse(parser: &mut Parser<'_>) -> Result<Self, ParseError> {
-
-        let mut statements = Vec::new();
-
         let attributes = parser.parse()?;
-        let open = parser.parse()?;
-        let mut must_be_last = None;
-
-        while !parser.peek::<ast::CloseBrace>()? {
-            if ast::Item::peek_as_stmt(parser)? {
-                let decl: ast::Item = parser.parse()?;
-
-                if let Some(span) = must_be_last {
-                    return Err(ParseError::new(
-                        span,
-                        ParseErrorKind::ExpectedBlockSemiColon {
-                            followed_span: decl.span(),
-                        },
-                    ));
-                }
-
-                statements.push(ast::Stmt::Item(decl));
-                continue;
-            }
-
-            let expr: ast::Expr = parser.parse()?;
-
-            if let Some(span) = must_be_last {
-                return Err(ParseError::new(
-                    span,
-                    ParseErrorKind::ExpectedBlockSemiColon {
-                        followed_span: expr.span(),
-                    },
-                ));
-            }
-
-            if parser.peek::<ast::SemiColon>()? {
-                statements.push(ast::Stmt::Semi(expr, parser.parse()?));
-            } else {
-                if expr.needs_semi() {
-                    must_be_last = Some(expr.span());
-                }
-
-                statements.push(ast::Stmt::Expr(expr));
-            }
-        }
-
-        let close = parser.parse()?;
-
-        Ok(Block {
-            attributes,
-            open,
-            statements,
-            close,
-        })
+        Self::parse_with_attributes(parser, attributes)
     }
 }

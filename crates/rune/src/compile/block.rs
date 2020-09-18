@@ -43,6 +43,7 @@ impl Compile<(&ast::Block, Needs)> for Compiler<'_> {
             let (expr, term) = match stmt {
                 ast::Stmt::Expr(expr) => (expr, false),
                 ast::Stmt::Semi(expr, _) => (expr, true),
+                ast::Stmt::Item(ast::Item::Block(expr)) => (&**expr, false),
                 _ => continue,
             };
 

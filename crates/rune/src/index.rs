@@ -84,10 +84,7 @@ impl<'a> Indexer<'a> {
         let source_id = self.sources.insert(source);
         self.visitor.visit_mod(source_id, span);
 
-        self.queue.push_back(Task::LoadFile {
-            item,
-            source_id,
-        });
+        self.queue.push_back(Task::LoadFile { item, source_id });
 
         Ok(())
     }
@@ -680,6 +677,9 @@ impl Index<ast::Item> for Indexer<'_> {
                     impl_items: self.impl_items.clone(),
                     kind: MacroKind::Item,
                 }));
+            }
+            ast::Item::Block(block) => {
+                self.index(&**block)?;
             }
         }
 

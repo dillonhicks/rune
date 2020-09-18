@@ -291,7 +291,6 @@ impl Expr {
                     }
                 });
             }
-            ast::Kind::Pound => Self::LitObject(parser.parse()?),
             ast::Kind::Bang | ast::Kind::Amp | ast::Kind::Star => Self::ExprUnary(parser.parse()?),
             ast::Kind::While => Self::ExprWhile(parser.parse()?),
             ast::Kind::Loop => Self::ExprLoop(parser.parse()?),
@@ -313,6 +312,14 @@ impl Expr {
             ast::Kind::Break => Self::ExprBreak(parser.parse()?),
             ast::Kind::Yield => Self::ExprYield(parser.parse()?),
             ast::Kind::Return => Self::ExprReturn(parser.parse()?),
+            ast::Kind::Pound => {
+                if parser.peek::<ast::AnonymousLitObject>()? {
+                    Self::LitObject(parser.parse()?)
+                } else {
+                    let attributes = parser.parse()?;
+                    Self::ExprBlock(ast::ExprBlock::parse_with_attributes(parser, attributes)?)
+                }
+            },
             _ => {
                 return Err(ParseError::new(
                     token,
@@ -517,6 +524,15 @@ impl Expr {
 /// parse_all::<ast::Expr>("foo.bar()[0].baz()[1]").unwrap();
 ///
 /// parse_all::<ast::Expr>("42 is int::int").unwrap();
+/// parse_all::<ast::Expr>("{ let x = 1; x }").unwrap();
+///
+/// let expr = parse_all::<ast::Expr>("#[cfg(debug_assertions)] { assert_eq(x, 32); }").unwrap();
+/// if let ast::Expr::ExprBlock(block_expr) = expr {
+///     assert_eq!(block_expr.block.statements.len(), 1);
+///     assert_eq!(block_expr.block.attributes.len(), 1);
+/// } else {
+///     panic!("not a block statement")
+/// }
 /// ```
 impl Parse for Expr {
     fn parse(parser: &mut Parser<'_>) -> Result<Self, ParseError> {
@@ -526,12 +542,12 @@ impl Parse for Expr {
 
 impl Peek for Expr {
     fn peek(t1: Option<ast::Token>, t2: Option<ast::Token>) -> bool {
-        let t1 = match t1 {
+        let t = match t1 {
             Some(t1) => t1,
             None => return false,
         };
 
-        match t1.kind {
+        match t.kind {
             ast::Kind::Async => true,
             ast::Kind::Self_ => true,
             ast::Kind::Select => true,

@@ -23,13 +23,26 @@ pub struct ItemImpl {
 impl ItemImpl {
     /// Parse an `impl` item with the given attributes
     pub fn parse_with_attributes(parser: &mut Parser<'_>, attributes: Vec<ast::Attribute>) -> Result<Self, ParseError> {
+
+        let impl_ = parser.parse()?;
+        let path = parser.parse()?;
+        let open = parser.parse()?;
+
+        let mut functions = vec![];
+        while !parser.peek::<ast::CloseBrace>()? {
+            let attributes = parser.parse()?;
+            functions.push(ast::ItemFn::parse_with_attributes(parser, attributes)?);
+        }
+
+        let close = parser.parse()?;
+
         Ok(Self {
             attributes,
-            impl_: parser.parse()?,
-            path: parser.parse()?,
-            open: parser.parse()?,
-            functions: parser.parse()?,
-            close: parser.parse()?,
+            impl_,
+            path,
+            open,
+            functions,
+            close
         })
     }
 }

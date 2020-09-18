@@ -19,6 +19,8 @@ impl_enum_ast! {
         ItemMod(ast::ItemMod),
         /// A macro call expanding into an item.
         MacroCall(ast::MacroCall),
+        /// A block statement, note the Expr must be the Expr::ExprBlock variant
+        Block(Box<ast::Expr>),
     }
 }
 
@@ -44,11 +46,50 @@ impl Item {
             ast::Kind::Impl => true,
             ast::Kind::Async | ast::Kind::Fn => true,
             ast::Kind::Mod => true,
+            // allow nesting blocks as items
+            // ast::Kind::Open(ast::Delimiter::Brace) => true,
             _ => ast::Attribute::peek(Some(t), t2),
         })
     }
 
+    /// Parse an item within a nested block
+    pub fn parse_in_nested_block(parser: &mut Parser) -> Result<Self, ParseError> {
+        let attributes: Vec<ast::Attribute> = parser.parse()?;
+        let t = parser.token_peek_eof()?;
 
+        Ok(match t.kind {
+            ast::Kind::Use => {
+                Self::ItemUse(ast::ItemUse::parse_with_attributes(parser, attributes)?)
+            }
+            ast::Kind::Enum => {
+                Self::ItemEnum(ast::ItemEnum::parse_with_attributes(parser, attributes)?)
+            }
+            ast::Kind::Struct => {
+                Self::ItemStruct(ast::ItemStruct::parse_with_attributes(parser, attributes)?)
+            }
+            ast::Kind::Impl => {
+                Self::ItemImpl(ast::ItemImpl::parse_with_attributes(parser, attributes)?)
+            }
+            ast::Kind::Async | ast::Kind::Fn => Self::ItemFn(Box::new(
+                ast::ItemFn::parse_with_attributes(parser, attributes)?,
+            )),
+            ast::Kind::Mod => {
+                Self::ItemMod(ast::ItemMod::parse_with_attributes(parser, attributes)?)
+            }
+            ast::Kind::Ident(..) => Self::MacroCall(parser.parse()?),
+            // ast::Kind::Open(ast::Delimiter::Brace) => {
+            //     let block = ast::ExprBlock::parse_with_attributes(parser, attributes)?;
+            //     let expr = ast::Expr::ExprBlock(block);
+            //     Self::Block(Box::new(expr))
+            // }
+            _ => {
+                return Err(ParseError::new(
+                    t,
+                    ParseErrorKind::ExpectedItem { actual: t.kind },
+                ))
+            }
+        })
+    }
 }
 
 impl Peek for Item {
@@ -77,14 +118,31 @@ impl Parse for Item {
         let t = parser.token_peek_eof()?;
 
         Ok(match t.kind {
-            ast::Kind::Use => Self::ItemUse(ast::ItemUse::parse_with_attributes(parser, attributes)?),
-            ast::Kind::Enum => Self::ItemEnum(ast::ItemEnum::parse_with_attributes(parser, attributes)?),
-            ast::Kind::Struct => Self::ItemStruct(ast::ItemStruct::parse_with_attributes(parser, attributes)?),
-            ast::Kind::Impl => Self::ItemImpl(ast::ItemImpl::parse_with_attributes(parser, attributes)?),
-            ast::Kind::Async | ast::Kind::Fn => Self::ItemFn(Box::new(ast::ItemFn::parse_with_attributes(parser, attributes)?)),
-            ast::Kind::Mod => Self::ItemMod(ast::ItemMod::parse_with_attributes(parser, attributes)?),
+            ast::Kind::Use => {
+                Self::ItemUse(ast::ItemUse::parse_with_attributes(parser, attributes)?)
+            }
+            ast::Kind::Enum => {
+                Self::ItemEnum(ast::ItemEnum::parse_with_attributes(parser, attributes)?)
+            }
+            ast::Kind::Struct => {
+                Self::ItemStruct(ast::ItemStruct::parse_with_attributes(parser, attributes)?)
+            }
+            ast::Kind::Impl => {
+                Self::ItemImpl(ast::ItemImpl::parse_with_attributes(parser, attributes)?)
+            }
+            ast::Kind::Async | ast::Kind::Fn => Self::ItemFn(Box::new(
+                ast::ItemFn::parse_with_attributes(parser, attributes)?,
+            )),
+            ast::Kind::Mod => {
+                Self::ItemMod(ast::ItemMod::parse_with_attributes(parser, attributes)?)
+            }
             ast::Kind::Ident(..) => Self::MacroCall(parser.parse()?),
-            _ =>  return Err(ParseError::new(t, ParseErrorKind::ExpectedItem { actual: t.kind }))
+            _ => {
+                return Err(ParseError::new(
+                    t,
+                    ParseErrorKind::ExpectedItem { actual: t.kind },
+                ))
+            }
         })
     }
 }
