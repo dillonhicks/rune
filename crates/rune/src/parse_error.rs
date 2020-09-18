@@ -73,16 +73,34 @@ pub enum ParseErrorKind {
         /// Kind of the token encountered instead of a declaration.
         actual: ast::Kind,
     },
+    /// Error raised when a delimiter is encountered but was not expected in the given context.
+    #[error("expected any token but NOT one of `{{`, `}}`, `[`, `]` , `(`, `)`. got `{actual}`.")]
+    ExpectedNonDelimter {
+        /// Kind of the token that was a delimiter.
+        actual: ast::Kind,
+    },
+    /// Error raised when a delimiter is encountered but was not expected in the given context.
+    #[error("expected a close delimiter `{{`, `[` , `(`. got `{actual}`.")]
+    ExpectedOpenDelimiter {
+        /// Kind of the token that was not an Open delimiter.
+        actual: ast::Kind,
+    },
+    /// Error raised when a delimiter is encountered but was not expected in the given context.
+    #[error("expected a close delimiter `}}`, `]` , `)`. got `{actual}`.")]
+    ExpectedCloseDelimiter {
+        /// Kind of the token that was not a close delimiter.
+        actual: ast::Kind,
+    },
+    /// Error raised when a delimiter is encountered but was not expected in the given context.
+    #[error("expected a delimiter `{{`, `}}`, `[`, `]` , `(`, `)`. got `{actual}`.")]
+    ExpectedDelimiter {
+        /// Kind of the token that was not a close delimiter.
+        actual: ast::Kind,
+    },
     /// Expected use import but found something else.
     #[error("expected import component but found `{actual}`")]
     ExpectedItemUseImportComponent {
         /// The actual token kind.
-        actual: ast::Kind,
-    },
-    /// Expected a token that was not a delimter
-    #[error("unexpected delimiter `{actual}`")]
-    UnexpectedDelimiter {
-        /// The actual token that was encountered.
         actual: ast::Kind,
     },
     /// Expected a token that was not a delimter
@@ -193,6 +211,12 @@ pub enum ParseErrorKind {
     #[error("expected unary operator (`!`) but got `{actual}`")]
     ExpectedUnaryOperator {
         /// The actual token.
+        actual: ast::Kind,
+    },
+    /// Expected Attribute Input but got something else.
+    #[error("expected `=` (literal assignment) or a delimiter (delimited token tree) but got `{actual}`")]
+    ExpectedAttributeInput {
+        /// The kind of the actual token we saw.
         actual: ast::Kind,
     },
     /// Expression group required to break precedence.

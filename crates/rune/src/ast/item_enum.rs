@@ -5,6 +5,8 @@ use runestick::Span;
 /// An enum declaration.
 #[derive(Debug, Clone)]
 pub struct ItemEnum {
+    /// The attributes for the enum block
+    pub attributes: Vec<ast::Attribute>,
     /// The `enum` token.
     pub enum_: ast::Enum,
     /// The name of the enum.
@@ -22,24 +24,9 @@ pub struct ItemEnum {
     pub close: ast::CloseBrace,
 }
 
-impl Spanned for ItemEnum {
-    fn span(&self) -> Span {
-        self.enum_.span().join(self.close.span())
-    }
-}
-
-/// Parse implementation for an enum.
-///
-/// # Examples
-///
-/// ```rust
-/// use rune::{parse_all, ast};
-///
-/// parse_all::<ast::ItemEnum>("enum Foo { Bar(a), Baz(b), Empty() }").unwrap();
-/// parse_all::<ast::ItemEnum>("enum Foo { Bar(a), Baz(b), #[default_value = \"zombie\"] Empty() }").unwrap();
-/// ```
-impl Parse for ItemEnum {
-    fn parse(parser: &mut Parser<'_>) -> Result<Self, ParseError> {
+impl ItemEnum {
+    /// Parse a `enum` item with the given attributes
+    pub fn parse_with_attributes(parser: &mut Parser<'_>, attributes: Vec<ast::Attribute>) -> Result< Self, ParseError> {
         let enum_ = parser.parse()?;
         let name = parser.parse()?;
         let open = parser.parse()?;
@@ -69,12 +56,37 @@ impl Parse for ItemEnum {
         let close = parser.parse()?;
 
         Ok(Self {
+            attributes,
             enum_,
             name,
             open,
             variants,
             close,
         })
+    }
+}
+
+impl Spanned for ItemEnum {
+    fn span(&self) -> Span {
+        self.enum_.span().join(self.close.span())
+    }
+}
+
+/// Parse implementation for an enum.
+///
+/// # Examples
+///
+/// ```rust
+/// use rune::{parse_all, ast};
+///
+/// parse_all::<ast::ItemEnum>("enum Foo { Bar(a), Baz(b), Empty() }").unwrap();
+/// parse_all::<ast::ItemEnum>("enum Foo { Bar(a), Baz(b), #[default_value = \"zombie\"] Empty() }").unwrap();
+/// parse_all::<ast::ItemEnum>("#[repr(Rune)] enum Foo { Bar(a), Baz(b), #[default_value = \"zombie\"] Empty() }").unwrap();
+/// ```
+impl Parse for ItemEnum {
+    fn parse(parser: &mut Parser<'_>) -> Result<Self, ParseError> {
+        let attributes = parser.parse()?;
+        Self::parse_with_attributes(parser, attributes)
     }
 }
 
@@ -115,6 +127,8 @@ pub enum ItemEnumVariant {
 ///
 /// parse_all::<ast::ItemEnumVariant>("( a, b, c );").unwrap();
 /// parse_all::<ast::ItemEnumVariant>("{ a, b, c }").unwrap();
+/// parse_all::<ast::ItemEnumVariant>("( #[serde(default)] a, b, c );").unwrap();
+/// parse_all::<ast::ItemEnumVariant>("{ a, #[debug(skip)] b, c }").unwrap();
 /// ```
 impl Parse for ItemEnumVariant {
     fn parse(parser: &mut Parser<'_>) -> Result<Self, ParseError> {
