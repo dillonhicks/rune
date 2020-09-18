@@ -19,11 +19,12 @@ pub struct ItemImpl {
     pub close: ast::CloseBrace,
 }
 
-
 impl ItemImpl {
     /// Parse an `impl` item with the given attributes
-    pub fn parse_with_attributes(parser: &mut Parser<'_>, attributes: Vec<ast::Attribute>) -> Result<Self, ParseError> {
-
+    pub fn parse_with_attributes(
+        parser: &mut Parser<'_>,
+        attributes: Vec<ast::Attribute>,
+    ) -> Result<Self, ParseError> {
         let impl_ = parser.parse()?;
         let path = parser.parse()?;
         let open = parser.parse()?;
@@ -42,7 +43,7 @@ impl ItemImpl {
             path,
             open,
             functions,
-            close
+            close,
         })
     }
 }

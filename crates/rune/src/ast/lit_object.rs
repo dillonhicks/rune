@@ -3,7 +3,6 @@ use crate::{IntoTokens, Parse, ParseError, ParseErrorKind, Parser, Resolve, Span
 use runestick::{Source, Span};
 use std::borrow::Cow;
 
-
 /// A literal object identifier.
 #[derive(Debug, Clone)]
 pub enum LitObjectIdent {
@@ -269,7 +268,6 @@ impl IntoTokens for LitObject {
     }
 }
 
-
 impl Peek for LitObject {
     fn peek(t1: Option<ast::Token>, t2: Option<ast::Token>) -> bool {
         let (t1, t2) = match (t1, t2) {
@@ -277,13 +275,12 @@ impl Peek for LitObject {
             _ => return false,
         };
         match (t1.kind, t2.kind) {
-            (ast::Kind::Ident(_), ast::Kind::Open(ast::Delimiter::Brace)) |
-            (ast::Kind::Pound, ast::Kind::Open(ast::Delimiter::Brace)) => true,
+            (ast::Kind::Ident(_), ast::Kind::Open(ast::Delimiter::Brace))
+            | (ast::Kind::Pound, ast::Kind::Open(ast::Delimiter::Brace)) => true,
             _ => false,
         }
     }
 }
-
 
 /// A tag object to help peeking for anonymous object case to help
 /// differentiate anonymous objects and attributes when parsing block
@@ -296,9 +293,8 @@ impl Peek for AnonymousLitObject {
         let kind2 = t2.map(|t| t.kind);
 
         match (kind1, kind2) {
-             (Some(ast::Kind::Pound), Some(ast::Kind::Open(ast::Delimiter::Brace)))=> true,
-             _ => false,
-         }
-
+            (Some(ast::Kind::Pound), Some(ast::Kind::Open(ast::Delimiter::Brace))) => true,
+            _ => false,
+        }
     }
 }

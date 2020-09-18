@@ -35,7 +35,10 @@ impl ItemFn {
     }
 
     /// Parse a `fn` item with the given attributes
-    pub fn parse_with_attributes(parser: &mut Parser<'_>, attributes: Vec<ast::Attribute>) -> Result<Self, ParseError> {
+    pub fn parse_with_attributes(
+        parser: &mut Parser<'_>,
+        attributes: Vec<ast::Attribute>,
+    ) -> Result<Self, ParseError> {
         Ok(Self {
             attributes,
             async_: parser.parse()?,

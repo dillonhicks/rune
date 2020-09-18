@@ -23,7 +23,10 @@ impl ExprBlock {
     }
 
     /// Parse the block expression attaching the given attributes
-    pub fn parse_with_attributes(parser: &mut Parser<'_>, attributes: Vec<ast::Attribute>) -> Result<Self, ParseError> {
+    pub fn parse_with_attributes(
+        parser: &mut Parser<'_>,
+        attributes: Vec<ast::Attribute>,
+    ) -> Result<Self, ParseError> {
         Ok(Self {
             block: ast::Block::parse_with_attributes(parser, attributes)?,
         })

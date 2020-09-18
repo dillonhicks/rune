@@ -27,7 +27,10 @@ into_tokens!(ItemUse {
 
 impl ItemUse {
     /// Parse a `use` item with the given attributes
-    pub fn parse_with_attributes(parser: &mut Parser, attributes: Vec<ast::Attribute>) -> Result<Self, ParseError> {
+    pub fn parse_with_attributes(
+        parser: &mut Parser,
+        attributes: Vec<ast::Attribute>,
+    ) -> Result<Self, ParseError> {
         Ok(Self {
             attributes,
             use_: parser.parse()?,

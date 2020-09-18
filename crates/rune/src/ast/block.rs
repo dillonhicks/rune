@@ -52,8 +52,10 @@ impl Block {
     }
 
     /// Parse a block attaching the given attributes
-    pub fn parse_with_attributes(parser: &mut Parser<'_>, attributes: Vec<ast::Attribute>) -> Result<Self, ParseError> {
-
+    pub fn parse_with_attributes(
+        parser: &mut Parser<'_>,
+        attributes: Vec<ast::Attribute>,
+    ) -> Result<Self, ParseError> {
         let mut statements = Vec::new();
 
         let open = parser.parse()?;

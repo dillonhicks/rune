@@ -1,4 +1,4 @@
-use crate::{ast, IntoTokens, MacroContext, TokenStream, Parse, Peek, Parser};
+use crate::{ast, IntoTokens, MacroContext, Parse, Parser, Peek, TokenStream};
 use crate::{ParseError, ParseErrorKind};
 use runestick::Span;
 use std::iter::Peekable;
@@ -239,7 +239,6 @@ pub(crate) fn is_block_end(expr: &ast::Expr, comma: Option<&ast::Comma>) -> bool
     }
 }
 
-
 /// Any open delimiter `{`, `(`, or `{`
 #[derive(Debug, Clone, Copy)]
 pub enum OpenDelim {
@@ -282,9 +281,7 @@ impl Parse for OpenDelim {
             let token = parser.token_peek_eof()?;
             Err(ParseError::new(
                 token,
-                ParseErrorKind::ExpectedOpenDelimiter {
-                    actual: token.kind,
-                },
+                ParseErrorKind::ExpectedOpenDelimiter { actual: token.kind },
             ))
         }
     }
@@ -352,9 +349,7 @@ impl Parse for CloseDelim {
             let token = parser.token_peek_eof()?;
             Err(ParseError::new(
                 token,
-                ParseErrorKind::ExpectedCloseDelimiter {
-                    actual: token.kind,
-                },
+                ParseErrorKind::ExpectedCloseDelimiter { actual: token.kind },
             ))
         }
     }
@@ -383,7 +378,7 @@ impl IntoTokens for CloseDelim {
 /// Any Any delimiter `}`, `)`, or `}`
 #[derive(Debug, Clone, Copy)]
 pub enum AnyDelim {
-   Open(OpenDelim),
+    Open(OpenDelim),
     Close(CloseDelim),
 }
 
@@ -393,7 +388,7 @@ impl AnyDelim {
         use AnyDelim::*;
 
         match self {
-          Open(delim) => delim.delim_kind(),
+            Open(delim) => delim.delim_kind(),
             Close(delim) => delim.delim_kind(),
         }
     }
@@ -418,9 +413,7 @@ impl Parse for AnyDelim {
             let token = parser.token_peek_eof()?;
             Err(ParseError::new(
                 token,
-                ParseErrorKind::ExpectedDelimiter {
-                    actual: token.kind,
-                },
+                ParseErrorKind::ExpectedDelimiter { actual: token.kind },
             ))
         }
     }

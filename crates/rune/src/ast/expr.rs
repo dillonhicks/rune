@@ -319,7 +319,7 @@ impl Expr {
                     let attributes = parser.parse()?;
                     Self::ExprBlock(ast::ExprBlock::parse_with_attributes(parser, attributes)?)
                 }
-            },
+            }
             _ => {
                 return Err(ParseError::new(
                     token,
