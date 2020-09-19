@@ -7,6 +7,8 @@ use runestick::Span;
 pub struct ItemStruct {
     /// The attributes for the struct
     pub attributes: Vec<ast::Attribute>,
+    /// The visibility of the `struct` item
+    pub visibility: Option<ast::Visibility>,
     /// The `struct` keyword.
     pub struct_: ast::Struct,
     /// The identifier of the struct declaration.
@@ -17,6 +19,7 @@ pub struct ItemStruct {
 
 into_tokens!(ItemStruct {
     attributes,
+    visibility,
     struct_,
     ident,
     body,
@@ -30,6 +33,7 @@ impl ItemStruct {
     ) -> Result<Self, ParseError> {
         Ok(Self {
             attributes,
+            visibility: parser.parse()?,
             struct_: parser.parse()?,
             ident: parser.parse()?,
             body: parser.parse()?,
@@ -39,7 +43,13 @@ impl ItemStruct {
 
 impl Spanned for ItemStruct {
     fn span(&self) -> Span {
-        let start = self.struct_.span();
+        let start = if let Some(first) = self.attributes.first() {
+            first.span()
+        } else if let Some(vis) = &self.visibility {
+            vis.span()
+        } else {
+            self.struct_.span()
+        };
 
         match &self.body {
             ItemStructBody::EmptyBody(semi) => start.join(semi.span()),
@@ -61,6 +71,7 @@ impl Spanned for ItemStruct {
 /// parse_all::<ast::ItemStruct>("struct Foo { a, b, c }").unwrap();
 /// parse_all::<ast::ItemStruct>("struct Foo { #[default_value = 1] a, b, c }").unwrap();
 /// parse_all::<ast::ItemStruct>("#[alpha] struct Foo ( #[default_value = \"x\" ] a, b, c );").unwrap();
+/// parse_all::<ast::ItemStruct>("#[alpha] pub struct Foo ( #[default_value = \"x\" ] a, b, c );").unwrap();
 /// ```
 impl Parse for ItemStruct {
     fn parse(parser: &mut Parser<'_>) -> Result<Self, ParseError> {
@@ -170,6 +181,7 @@ impl TupleBody {
 ///
 /// parse_all::<ast::TupleBody>("( a, b, c )").unwrap();
 /// parse_all::<ast::TupleBody>("( #[x] a, b, c )").unwrap();
+/// parse_all::<ast::TupleBody>("( #[x] pub a, b, c )").unwrap();
 /// ```
 impl Parse for TupleBody {
     fn parse(parser: &mut Parser<'_>) -> Result<Self, ParseError> {
@@ -260,6 +272,8 @@ impl Parse for StructBody {
 pub struct Field {
     /// Attributes associated with field.
     pub attributes: Vec<ast::Attribute>,
+    /// The visibility of the field
+    pub visibility: Option<ast::Visibility>,
     /// Name of the field.
     pub name: ast::Ident,
     /// Trailing comma of the field.
@@ -268,6 +282,7 @@ pub struct Field {
 
 into_tokens!(Field {
     attributes,
+    visibility,
     name,
     comma,
 });
@@ -282,6 +297,8 @@ impl Spanned for Field {
 
         if let Some(first) = self.attributes.first() {
             first.span().join(last)
+        } else if let Some(vis) = &self.visibility {
+            vis.span().join(last)
         } else {
             last
         }
@@ -296,12 +313,15 @@ impl Spanned for Field {
 /// use rune::{parse_all, ast};
 ///
 /// parse_all::<ast::Field>("a").unwrap();
+/// parse_all::<ast::Field>("pub(crate) a").unwrap();
 /// parse_all::<ast::Field>("#[x] a").unwrap();
+/// parse_all::<ast::Field>("#[x] pub(crate) a").unwrap();
 /// ```
 impl Parse for Field {
     fn parse(parser: &mut Parser) -> Result<Self, ParseError> {
         Ok(Self {
             attributes: parser.parse()?,
+            visibility: parser.parse()?,
             name: parser.parse()?,
             comma: parser.parse()?,
         })

@@ -96,12 +96,8 @@ impl Parse for Path {
 
         let first: ast::Ident = match token.kind {
             ast::Kind::Ident(_) => parser.parse()?,
-            ast::Kind::Super => {
-                parser.parse::<ast::Super>()?.into()
-            },
-            ast::Kind::Crate => {
-                parser.parse::<ast::Crate>()?.into()
-            },
+            ast::Kind::Super => parser.parse::<ast::Super>()?.into(),
+            ast::Kind::Crate => parser.parse::<ast::Crate>()?.into(),
             _ => {
                 return Err(ParseError::new(
                     token,

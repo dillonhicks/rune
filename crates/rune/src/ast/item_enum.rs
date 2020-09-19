@@ -7,7 +7,7 @@ use runestick::Span;
 pub struct ItemEnum {
     /// The attributes for the enum block
     pub attributes: Vec<ast::Attribute>,
-    /// The visibility specifier
+    /// The visibility of the `enum` item
     pub visibility: Option<ast::Visibility>,
     /// The `enum` token.
     pub enum_: ast::Enum,
@@ -96,6 +96,7 @@ impl Spanned for ItemEnum {
 /// parse_all::<ast::ItemEnum>("enum Foo { Bar(a), Baz(b), Empty() }").unwrap();
 /// parse_all::<ast::ItemEnum>("enum Foo { Bar(a), Baz(b), #[default_value = \"zombie\"] Empty() }").unwrap();
 /// parse_all::<ast::ItemEnum>("#[repr(Rune)] enum Foo { Bar(a), Baz(b), #[default_value = \"zombie\"] Empty() }").unwrap();
+/// parse_all::<ast::ItemEnum>("pub enum Color { Blue, Red, Green }").unwrap();
 /// ```
 impl Parse for ItemEnum {
     fn parse(parser: &mut Parser<'_>) -> Result<Self, ParseError> {

@@ -7,6 +7,8 @@ use runestick::Span;
 pub struct ItemFn {
     /// The attributes for the fn
     pub attributes: Vec<ast::Attribute>,
+    /// The visibility of the `fn` item
+    pub visibility: Option<ast::Visibility>,
     /// The optional `async` keyword.
     pub async_: Option<ast::Async>,
     /// The `fn` token.
@@ -41,6 +43,7 @@ impl ItemFn {
     ) -> Result<Self, ParseError> {
         Ok(Self {
             attributes,
+            visibility: parser.parse()?,
             async_: parser.parse()?,
             fn_: parser.parse()?,
             name: parser.parse()?,
@@ -52,18 +55,22 @@ impl ItemFn {
 
 impl Spanned for ItemFn {
     fn span(&self) -> Span {
-        if let Some(first) = self.attributes.first() {
-            first.span().join(self.body.span())
+        let start = if let Some(first) = self.attributes.first() {
+            first.span()
+        } else if let Some(visibility) = &self.visibility {
+            visibility.span()
         } else if let Some(async_) = &self.async_ {
-            async_.span().join(self.body.span())
+            async_.span()
         } else {
-            self.fn_.span().join(self.body.span())
-        }
+            self.fn_.span()
+        };
+
+        start.join(self.body.span())
     }
 }
 
 impl Peek for ItemFn {
-    fn peek(t1: Option<ast::Token>, _: Option<ast::Token>) -> bool {
+    fn peek(t1: Option<ast::Token>, _t2: Option<ast::Token>) -> bool {
         let t = match t1 {
             Some(t) => t,
             None => return false,
@@ -89,7 +96,14 @@ impl Peek for ItemFn {
 /// let item = parse_all::<ast::ItemFn>("fn hello(foo, bar) {}").unwrap();
 /// assert_eq!(item.args.items.len(), 2);
 ///
+/// let item = parse_all::<ast::ItemFn>("pub fn hello(foo, bar) {}").unwrap();
+/// let item = parse_all::<ast::ItemFn>("pub async fn hello(foo, bar) {}").unwrap();
 /// let item = parse_all::<ast::ItemFn>("#[inline] fn hello(foo, bar) {}").unwrap();
+/// let item = parse_all::<ast::ItemFn>("#[inline] pub async fn hello(foo, bar) {}").unwrap();
+///
+/// if let Some(ast::Visibility::Public(_)) = &item.visibility {} else {
+///     panic!("expected `fn` item visibility of `Public` got {:?}", &item.visibility);
+/// }
 /// assert_eq!(item.args.items.len(), 2);
 /// assert_eq!(item.attributes.len(), 1);
 ///
@@ -104,6 +118,7 @@ impl Parse for ItemFn {
 impl IntoTokens for ItemFn {
     fn into_tokens(&self, context: &mut crate::MacroContext, stream: &mut crate::TokenStream) {
         self.async_.into_tokens(context, stream);
+        self.visibility.into_tokens(context, stream);
         self.fn_.into_tokens(context, stream);
         self.name.into_tokens(context, stream);
         self.args.into_tokens(context, stream);

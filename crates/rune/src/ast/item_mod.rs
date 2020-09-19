@@ -7,6 +7,8 @@ use runestick::Span;
 pub struct ItemMod {
     /// The *inner* attributes are applied to the module  `#[cfg(test)] mod tests {  }`
     pub attributes: Vec<ast::Attribute>,
+    /// The visibility of the `mod` item
+    pub visibility: Option<ast::Visibility>,
     /// The `mod` keyword.
     pub mod_: ast::Mod,
     /// The name of the mod.
@@ -23,6 +25,7 @@ impl ItemMod {
     ) -> Result<Self, ParseError> {
         Ok(Self {
             attributes,
+            visibility: parser.parse()?,
             mod_: parser.parse()?,
             name: parser.parse()?,
             body: parser.parse()?,
@@ -34,6 +37,8 @@ impl Spanned for ItemMod {
     fn span(&self) -> Span {
         if let Some(first) = self.attributes.first() {
             first.span().join(self.body.span())
+        } else if let Some(vis) = &self.visibility {
+            vis.span().join(self.body.span())
         } else {
             self.mod_.span().join(self.body.span())
         }
@@ -72,6 +77,7 @@ impl Parse for ItemMod {
 impl IntoTokens for ItemMod {
     fn into_tokens(&self, context: &mut crate::MacroContext, stream: &mut crate::TokenStream) {
         self.attributes.into_tokens(context, stream);
+        self.visibility.into_tokens(context, stream);
         self.mod_.into_tokens(context, stream);
         self.name.into_tokens(context, stream);
         self.body.into_tokens(context, stream);

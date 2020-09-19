@@ -130,6 +130,18 @@ impl Index<ast::ItemFn> for Indexer<'_> {
         let span = decl_fn.span();
         log::trace!("ItemFn => {:?}", self.source.source(span));
 
+        if let Some(first) = decl_fn.attributes.first() {
+            return Err(CompileError::internal(
+                first,
+                "function attributes are not supported",
+            ));
+        } else if let Some(vis) = &decl_fn.visibility {
+            return Err(CompileError::internal(
+                vis,
+                "function visibility levels are not supported",
+            ));
+        }
+
         let is_toplevel = self.items.is_empty();
         let name = decl_fn.name.resolve(&self.storage, &*self.source)?;
         let _guard = self.items.push_name(name.as_ref());
@@ -609,6 +621,11 @@ impl Index<ast::Item> for Indexer<'_> {
                         first,
                         "use attributes are not supported",
                     ));
+                } else if let Some(vis) = &import.visibility {
+                    return Err(CompileError::internal(
+                        vis,
+                        "use visibility levels are not supported",
+                    ));
                 }
 
                 self.queue.push_back(Task::Import(Import {
@@ -623,6 +640,11 @@ impl Index<ast::Item> for Indexer<'_> {
                     return Err(CompileError::internal(
                         first,
                         "enum attributes are not supported",
+                    ));
+                } else if let Some(vis) = &item_enum.visibility {
+                    return Err(CompileError::internal(
+                        vis,
+                        "enum visibility levels are not supported",
                     ));
                 }
 
@@ -682,6 +704,11 @@ impl Index<ast::Item> for Indexer<'_> {
                         first,
                         "struct attributes are not supported",
                     ));
+                } else if let Some(vis) = &item_struct.visibility {
+                    return Err(CompileError::internal(
+                        vis,
+                        "struct visibility levels are not supported",
+                    ));
                 }
 
                 for field in item_struct.body.fields() {
@@ -689,6 +716,11 @@ impl Index<ast::Item> for Indexer<'_> {
                         return Err(CompileError::internal(
                             first,
                             "field attributes are not supported",
+                        ));
+                    } else if let Some(vis) = &field.visibility {
+                        return Err(CompileError::internal(
+                            vis,
+                            "field visibility levels are not supported",
                         ));
                     }
                 }
@@ -704,13 +736,6 @@ impl Index<ast::Item> for Indexer<'_> {
                 )?;
             }
             ast::Item::ItemFn(item_fn) => {
-                if let Some(first) = item_fn.attributes.first() {
-                    return Err(CompileError::internal(
-                        first,
-                        "function attributes are not supported",
-                    ));
-                }
-
                 self.index(&**item_fn)?;
             }
             ast::Item::ItemImpl(item_impl) => {
@@ -741,6 +766,11 @@ impl Index<ast::Item> for Indexer<'_> {
                     return Err(CompileError::internal(
                         first,
                         "module attributes are not supported",
+                    ));
+                } else if let Some(vis) = &item_mod.visibility {
+                    return Err(CompileError::internal(
+                        vis,
+                        "module visibility levels are not supported",
                     ));
                 }
 

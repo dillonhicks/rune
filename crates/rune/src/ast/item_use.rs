@@ -7,6 +7,8 @@ use runestick::Span;
 pub struct ItemUse {
     /// The attributes on use item
     pub attributes: Vec<ast::Attribute>,
+    /// The visibility of the `use` item
+    pub visibility: Option<ast::Visibility>,
     /// The use token.
     pub use_: ast::Use,
     /// First component in use.
@@ -33,6 +35,7 @@ impl ItemUse {
     ) -> Result<Self, ParseError> {
         Ok(Self {
             attributes,
+            visibility: parser.parse()?,
             use_: parser.parse()?,
             first: parser.parse()?,
             rest: parser.parse()?,
@@ -44,6 +47,8 @@ impl Spanned for ItemUse {
     fn span(&self) -> Span {
         if let Some(first) = self.attributes.first() {
             first.span().join(self.semi.span())
+        } else if let Some(vis) = &self.visibility {
+            vis.span()
         } else {
             self.use_.span().join(self.semi.span())
         }
@@ -60,6 +65,8 @@ impl Spanned for ItemUse {
 /// parse_all::<ast::ItemUse>("use foo;").unwrap();
 /// parse_all::<ast::ItemUse>("use foo::bar;").unwrap();
 /// parse_all::<ast::ItemUse>("use foo::bar::baz;").unwrap();
+/// parse_all::<ast::ItemUse>("#[macro_use] use foo::bar::baz;").unwrap();
+/// parse_all::<ast::ItemUse>("#[macro_use] pub(crate) use foo::bar::baz;").unwrap();
 /// ```
 impl Parse for ItemUse {
     fn parse(parser: &mut Parser) -> Result<Self, ParseError> {
