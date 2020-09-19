@@ -7,6 +7,8 @@ use runestick::Span;
 pub struct ItemEnum {
     /// The attributes for the enum block
     pub attributes: Vec<ast::Attribute>,
+    /// The visibility specifier
+    pub visibility: Option<ast::Visibility>,
     /// The `enum` token.
     pub enum_: ast::Enum,
     /// The name of the enum.
@@ -21,6 +23,7 @@ pub struct ItemEnum {
 
 into_tokens!(ItemEnum {
     attributes,
+    visibility,
     enum_,
     name,
     open,
@@ -34,6 +37,7 @@ impl ItemEnum {
         parser: &mut Parser<'_>,
         attributes: Vec<ast::Attribute>,
     ) -> Result<Self, ParseError> {
+        let visibility = parser.parse()?;
         let enum_ = parser.parse()?;
         let name = parser.parse()?;
         let open = parser.parse()?;
@@ -60,6 +64,7 @@ impl ItemEnum {
 
         Ok(Self {
             attributes,
+            visibility,
             enum_,
             name,
             open,
@@ -73,6 +78,8 @@ impl Spanned for ItemEnum {
     fn span(&self) -> Span {
         if let Some(first) = self.attributes.first() {
             first.span().join(self.close.span())
+        } else if let Some(visibility) = &self.visibility {
+            visibility.span().join(self.close.span())
         } else {
             self.enum_.span().join(self.close.span())
         }

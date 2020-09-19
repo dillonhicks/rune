@@ -1,15 +1,19 @@
-use crate::ast;
+use crate::{ast, ParseErrorKind};
 use crate::{IntoTokens, Parse, ParseError, Parser, Peek, Resolve, Spanned, Storage};
 use runestick::{Source, Span};
 use std::borrow::Cow;
 
+type PathSegments = Vec<(ast::Scope, ast::Ident)>;
+
 /// A path, where each element is separated by a `::`.
 #[derive(Debug, Clone)]
 pub struct Path {
+    /// The optional leading colon `::`
+    pub leading_colon: Option<ast::Scope>,
     /// The first component in the path.
     pub first: ast::Ident,
     /// The rest of the components in the path.
-    pub rest: Vec<(ast::Scope, ast::Ident)>,
+    pub rest: PathSegments,
     /// Trailing scope.
     pub trailing: Option<ast::Scope>,
 }
@@ -65,11 +69,53 @@ impl Peek for Path {
         matches!(t1.kind, ast::Kind::Ident(..))
     }
 }
-
+/// Parsing Paths
+///
+/// # Examples
+///
+/// ```rust
+/// use rune::{parse_all, ast, ParseError};
+///
+/// parse_all::<ast::Path>("x").unwrap();
+/// parse_all::<ast::Path>("::x").unwrap();
+/// parse_all::<ast::Path>("a::b").unwrap();
+/// parse_all::<ast::Path>("::ab::cd").unwrap();
+/// parse_all::<ast::Path>("crate").unwrap();
+/// parse_all::<ast::Path>("super").unwrap();
+/// parse_all::<ast::Path>("crate::foo").unwrap();
+/// parse_all::<ast::Path>("super::bar").unwrap();
+/// parse_all::<ast::Path>("::super").unwrap();
+/// parse_all::<ast::Path>("::crate").unwrap();
+/// ```
+///
 impl Parse for Path {
     fn parse(parser: &mut Parser<'_>) -> Result<Self, ParseError> {
+        let leading_colon = parser.parse::<Option<ast::Scope>>()?;
+
+        let token = parser.token_peek_eof()?;
+
+        let first: ast::Ident = match token.kind {
+            ast::Kind::Ident(_) => parser.parse()?,
+            ast::Kind::Super => {
+                parser.parse::<ast::Super>()?.into()
+            },
+            ast::Kind::Crate => {
+                parser.parse::<ast::Crate>()?.into()
+            },
+            _ => {
+                return Err(ParseError::new(
+                    token,
+                    ParseErrorKind::TokenMismatch {
+                        expected: ast::Kind::Ident(ast::StringSource::Text),
+                        actual: token.kind,
+                    },
+                ))
+            }
+        };
+
         Ok(Self {
-            first: parser.parse()?,
+            leading_colon,
+            first,
             rest: parser.parse()?,
             trailing: parser.parse()?,
         })
