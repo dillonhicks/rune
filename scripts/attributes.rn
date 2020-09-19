@@ -1,17 +1,17 @@
-// attributes.rn - A demonstration of the valid placement of attributes 
+// attributes.rn - A demonstration of the valid placement of attributes
 // accepted by the parser.
 //
-// Attributes are ignored silently by the compiler at this time. 
+// Attributes are ignored silently by the compiler at this time.
 //
-// Rune's attribute syntax is a superset of to Rust's attribute syntax. Rune accepts a 
-// wider arrange of literal values (for example, `#[x = #{"key": Potato}]`). 
+// Rune's attribute syntax is a superset of to Rust's attribute syntax. Rune accepts a
+// wider arrange of literal values (for example, `#[x = #{"key": Potato}]`).
 // As with Rust's attributes see `StructWithCustomSyntaxAttribute` below.
 //
 // See: https://doc.rust-lang.org/reference/attributes.html
 //
 //
 // Valid placement attributes:
-// 
+//
 // 1. top of file/module "outer" attributes
 // 2. attrs on `use` items
 // 3. on `struct` items
@@ -27,7 +27,7 @@
 // 9. on `enum` variants
 // 10. on `mod` items
 // 11. on `block` expressions
-//   1. when nested within a `fn` item 
+//   1. when nested within a `fn` item
 //   2. nested `block` expressions within `block` expressions
 // 12. custom syntaxes for attribute input
 //   1. custom/nonsensical syntax for input to the `custom_syntax` attribute
@@ -121,11 +121,11 @@ fn definetypeinfunction() {
 }
 
 // 12.1. using custom/nonsensical syntax for input to the `custom_syntax` attribute
-#[custom_syntax( 
-    when x > 1 => trigger_event(#234) @ now! -> |**(xyz)| { do the thing } 
+#[custom_syntax(
+    when x > 1 => trigger_event(#234) @ now! -> |**(xyz)| { do the thing }
 )]
 // 12.2. embedding some info about an existing language that is not whitespace sensitive
-#[transform_source::c( 
+#[transform_source::c(
   struct StructWithCustomSyntax {
     int base;
   }
@@ -142,9 +142,9 @@ version="^3.6",
 source="
 class StructWithCustomSyntax:
     base  # type: int
-    
+
     # python comment
-    def ipow(self, pow: int) -> int: 
+    def ipow(self, pow: int) -> int:
         '''docstring'''
         return self.value ^ pow
 ")]
