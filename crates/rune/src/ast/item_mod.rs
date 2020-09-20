@@ -8,7 +8,7 @@ pub struct ItemMod {
     #[rune(iter)]
     pub attributes: Vec<ast::Attribute>,
     /// The visibility of the `mod` item
-    #[spanned(iter)]
+    #[rune(iter)]
     pub visibility: Option<ast::Visibility>,
     /// The `mod` keyword.
     pub mod_: ast::Mod,

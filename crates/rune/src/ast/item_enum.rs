@@ -8,7 +8,7 @@ pub struct ItemEnum {
     #[rune(iter)]
     pub attributes: Vec<ast::Attribute>,
     /// The visibility of the `enum` item
-    #[spanned(iter)]
+    #[rune(iter)]
     pub visibility: Option<ast::Visibility>,
     /// The `enum` token.
     pub enum_: ast::Enum,

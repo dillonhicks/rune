@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::{Parse, ParseError, Peek, Resolve, Spanned, Storage, ToTokens};
+use crate::{Parse, ParseError, ParseErrorKind, Parser, Peek, Resolve, Spanned, Storage, ToTokens};
 use runestick::Source;
 use std::borrow::Cow;
 
@@ -9,7 +9,7 @@ type PathSegments = Vec<(ast::Scope, ast::Ident)>;
 #[derive(Debug, Clone, ToTokens, Spanned)]
 pub struct Path {
     /// The optional leading colon `::`
-    #[spanned(iter)]
+    #[rune(iter)]
     pub leading_colon: Option<ast::Scope>,
     /// The first component in the path.
     pub first: ast::Ident,

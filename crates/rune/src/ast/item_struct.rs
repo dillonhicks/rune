@@ -8,7 +8,7 @@ pub struct ItemStruct {
     #[rune(iter)]
     pub attributes: Vec<ast::Attribute>,
     /// The visibility of the `struct` item
-    #[spanned(iter)]
+    #[rune(iter)]
     pub visibility: Option<ast::Visibility>,
     /// The `struct` keyword.
     pub struct_: ast::Struct,
@@ -213,7 +213,7 @@ pub struct Field {
     #[rune(iter)]
     pub attributes: Vec<ast::Attribute>,
     /// The visibility of the field
-    #[spanned(iter)]
+    #[rune(iter)]
     pub visibility: Option<ast::Visibility>,
     /// Name of the field.
     pub name: ast::Ident,
