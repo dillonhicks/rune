@@ -22,7 +22,7 @@ pub struct FnArg {
     pub ident: FnArgIdent,
     /// Optional type of the function argument
     #[spanned(iter)]
-    pub type_: Option<FnArgType>,
+    pub type_: Option<ast::TypeHint>,
 }
 
 impl FnArg {
@@ -82,20 +82,5 @@ impl Parse for FnArgIdent {
                 ))
             }
         })
-    }
-}
-
-/// The type of a function argument
-#[derive(Debug, Clone, Ast, Spanned, Parse)]
-pub struct FnArgType {
-    /// The `:` token between ident and type
-    pub colon: ast::Colon,
-    /// The type of the argument
-    pub type_: Box<ast::Type>,
-}
-
-impl Peek for FnArgType {
-    fn peek(t1: Option<ast::Token>, t2: Option<ast::Token>) -> bool {
-        matches!(peek!(t1).kind, ast::Kind::Colon) && ast::Type::peek(t2, None)
     }
 }

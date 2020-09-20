@@ -69,6 +69,7 @@ mod return_type;
 mod stmt;
 mod token;
 mod ty;
+mod ty_hint;
 mod ty_path;
 pub(super) mod utils;
 mod vis;
@@ -106,7 +107,7 @@ pub use self::expr_unary::{ExprUnary, UnaryOp};
 pub use self::expr_while::ExprWhile;
 pub use self::expr_yield::ExprYield;
 pub use self::file::File;
-pub use self::fn_arg::{FnArg, FnArgIdent, FnArgType};
+pub use self::fn_arg::{FnArg, FnArgIdent};
 pub use self::ident::Ident;
 pub use self::item::Item;
 pub use self::item_enum::{ItemEnum, ItemVariant, ItemVariantBody};
@@ -145,6 +146,7 @@ pub use self::token::{
     LitStrSourceText, Number, NumberBase, NumberSource, NumberSourceText, StringSource, Token,
 };
 pub use self::ty::Type;
+pub use self::ty_hint::TypeHint;
 pub use self::ty_path::TypePath;
 pub use self::vis::Visibility;
 pub use self::vis_restricted::VisRestricted;

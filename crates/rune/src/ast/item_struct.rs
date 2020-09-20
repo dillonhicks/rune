@@ -46,6 +46,7 @@ impl ItemStruct {
 /// parse_all::<ast::ItemStruct>("struct Foo { a, b, c }").unwrap();
 /// parse_all::<ast::ItemStruct>("struct Foo { #[default_value = 1] a, b, c }").unwrap();
 /// parse_all::<ast::ItemStruct>("#[alpha] struct Foo ( #[default_value = \"x\" ] a, b, c );").unwrap();
+/// parse_all::<ast::ItemStruct>("pub struct Bar { pub baz: int }").unwrap();
 /// ```
 impl Parse for ItemStruct {
     fn parse(parser: &mut Parser<'_>) -> Result<Self, ParseError> {
@@ -205,7 +206,7 @@ impl Parse for StructBody {
 /// use rune::{parse_all, ast};
 ///
 /// parse_all::<ast::Field>("a").unwrap();
-/// parse_all::<ast::Field>("#[x] a").unwrap();
+/// parse_all::<ast::Field>("#[x] a: i64").unwrap();
 /// ```
 #[derive(Debug, Clone, Ast, Parse, Spanned)]
 pub struct Field {
@@ -217,6 +218,9 @@ pub struct Field {
     pub visibility: Option<ast::Visibility>,
     /// Name of the field.
     pub name: ast::Ident,
+    /// The type hint of the field
+    #[spanned(iter)]
+    pub type_: Option<ast::TypeHint>,
     /// Trailing comma of the field.
     #[spanned(iter)]
     pub comma: Option<ast::Comma>,
