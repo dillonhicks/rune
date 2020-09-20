@@ -49,7 +49,14 @@ impl Item {
         let attributes: Vec<ast::Attribute> = parser.parse()?;
         let t = parser.token_peek_eof()?;
 
-        Ok(match t.kind {
+        let kind = if t.kind == ast::Kind::Pub {
+            let t2 = parser.token_peek2_eof()?;
+            t2.kind
+        } else {
+            t.kind
+        };
+
+        Ok(match kind {
             ast::Kind::Use => {
                 Self::ItemUse(ast::ItemUse::parse_with_attributes(parser, attributes)?)
             }
@@ -72,7 +79,7 @@ impl Item {
             _ => {
                 return Err(ParseError::new(
                     t,
-                    ParseErrorKind::ExpectedItem { actual: t.kind },
+                    ParseErrorKind::ExpectedItem { actual: kind },
                 ))
             }
         })
@@ -81,7 +88,14 @@ impl Item {
 
 impl Peek for Item {
     fn peek(t1: Option<ast::Token>, t2: Option<ast::Token>) -> bool {
-        match peek!(t1).kind {
+        let t = peek!(t1);
+        let kind = if matches!(t.kind, ast::Kind::Pub) {
+            peek!(t2).kind
+        } else {
+            t.kind
+        };
+
+        match kind {
             ast::Kind::Use => true,
             ast::Kind::Enum => true,
             ast::Kind::Struct => true,
@@ -90,7 +104,7 @@ impl Peek for Item {
             ast::Kind::Fn => true,
             ast::Kind::Mod => true,
             ast::Kind::Ident(..) => true,
-            _ => ast::Attribute::peek(t1, t2),
+            _ => ast::Attribute::peek(t1, t2) || ast::Visibility::peek(t1, t2),
         }
     }
 }
@@ -100,7 +114,14 @@ impl Parse for Item {
         let attributes: Vec<ast::Attribute> = parser.parse()?;
         let t = parser.token_peek_eof()?;
 
-        Ok(match t.kind {
+        let kind = if t.kind == ast::Kind::Pub {
+            let t2 = parser.token_peek2_eof()?;
+            t2.kind
+        } else {
+            t.kind
+        };
+
+        Ok(match kind {
             ast::Kind::Use => {
                 Self::ItemUse(ast::ItemUse::parse_with_attributes(parser, attributes)?)
             }
