@@ -65,8 +65,11 @@ mod pat_path;
 mod pat_tuple;
 mod pat_vec;
 mod path;
+mod return_type;
 mod stmt;
 mod token;
+mod ty;
+mod ty_path;
 pub(super) mod utils;
 mod vis;
 mod vis_restricted;
@@ -103,7 +106,7 @@ pub use self::expr_unary::{ExprUnary, UnaryOp};
 pub use self::expr_while::ExprWhile;
 pub use self::expr_yield::ExprYield;
 pub use self::file::File;
-pub use self::fn_arg::FnArg;
+pub use self::fn_arg::{FnArg, FnArgIdent, FnArgType};
 pub use self::ident::Ident;
 pub use self::item::Item;
 pub use self::item_enum::{ItemEnum, ItemVariant, ItemVariantBody};
@@ -135,11 +138,14 @@ pub use self::pat_path::PatPath;
 pub use self::pat_tuple::PatTuple;
 pub use self::pat_vec::PatVec;
 pub use self::path::Path;
+pub use self::return_type::ReturnType;
 pub use self::stmt::Stmt;
 pub use self::token::{
     CopySource, Delimiter, Kind, LitByteStrSource, LitByteStrSourceText, LitStrSource,
     LitStrSourceText, Number, NumberBase, NumberSource, NumberSourceText, StringSource, Token,
 };
+pub use self::ty::Type;
+pub use self::ty_path::TypePath;
 pub use self::vis::Visibility;
 pub use self::vis_restricted::VisRestricted;
 
@@ -245,6 +251,7 @@ decl_tokens! {
     (Crate, "The `crate` keyword.", Kind::Crate),
     (Super, "The `super` keyword.", Kind::Super),
     (Extern, "The `extern` keyword.", Kind::Extern),
+    (RArrow, "The right arrow. `->`", Kind::RArrow),
 }
 
 #[cfg(test)]

@@ -151,12 +151,12 @@ impl Index<ast::ItemFn> for Indexer<'_> {
         let guard = self.scopes.push_function(decl_fn.async_.is_some());
 
         for (arg, _) in &decl_fn.args.items {
-            match arg {
-                ast::FnArg::Self_(s) => {
+            match &arg.ident {
+                ast::FnArgIdent::Self_(s) => {
                     let span = s.span();
                     self.scopes.declare("self", span)?;
                 }
-                ast::FnArg::Ident(ident) => {
+                ast::FnArgIdent::Ident(ident) => {
                     let span = ident.span();
                     let ident = ident.resolve(&self.storage, &*self.source)?;
                     self.scopes.declare(ident.as_ref(), span)?;
@@ -867,15 +867,15 @@ impl Index<ast::ExprClosure> for Indexer<'_> {
         let span = expr_closure.span();
 
         for (arg, _) in expr_closure.args.as_slice() {
-            match arg {
-                ast::FnArg::Self_(s) => {
+            match &arg.ident {
+                ast::FnArgIdent::Self_(s) => {
                     return Err(CompileError::new(*s, CompileErrorKind::UnsupportedSelf));
                 }
-                ast::FnArg::Ident(ident) => {
+                ast::FnArgIdent::Ident(ident) => {
                     let ident = ident.resolve(&self.storage, &*self.source)?;
                     self.scopes.declare(ident.as_ref(), span)?;
                 }
-                ast::FnArg::Ignore(..) => (),
+                ast::FnArgIdent::Ignore(..) => (),
             }
         }
 

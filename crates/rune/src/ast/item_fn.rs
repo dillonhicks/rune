@@ -19,7 +19,11 @@ pub struct ItemFn {
     /// The name of the function.
     pub name: ast::Ident,
     /// The arguments of the function.
+    // TODO: merge args and output into a signature
     pub args: ast::Parenthesized<ast::FnArg, ast::Comma>,
+    /// The return type-hint
+    #[spanned(iter)]
+    pub output: Option<ast::ReturnType>,
     /// The body of the function.
     pub body: ast::Block,
 }
@@ -36,7 +40,10 @@ impl ItemFn {
 
     /// Test if function is an instance fn.
     pub fn is_instance(&self) -> bool {
-        matches!(self.args.items.first(), Some((ast::FnArg::Self_(..), _)))
+        matches!(
+            self.args.items.first().map(|arg| (&arg.0.ident, &arg.1)),
+            Some((ast::FnArgIdent::Self_(..), _))
+        )
     }
 
     /// Parse a `fn` item with the given attributes
@@ -51,6 +58,7 @@ impl ItemFn {
             fn_: parser.parse()?,
             name: parser.parse()?,
             args: parser.parse()?,
+            output: parser.parse()?,
             body: parser.parse()?,
         })
     }
@@ -89,6 +97,14 @@ impl Peek for ItemFn {
 /// assert_eq!(item.args.items.len(), 2);
 /// assert_eq!(item.attributes.len(), 1);
 ///
+/// let item = parse_all::<ast::ItemFn>(r#"
+///     #[inline]
+///     pub async fn get(url: String) -> String  {
+///         http::get(url).await?
+///     }"#).unwrap();
+/// assert_eq!(item.args.items.len(), 1);
+/// let type_ = item.args.items.first().and_then(|(arg, _)| arg.type_.as_ref());
+/// assert!(type_.is_some());
 /// ```
 impl Parse for ItemFn {
     fn parse(parser: &mut Parser<'_>) -> Result<Self, ParseError> {

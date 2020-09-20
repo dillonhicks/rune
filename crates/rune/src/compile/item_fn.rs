@@ -15,8 +15,8 @@ impl Compile<(ast::ItemFn, bool)> for Compiler<'_> {
         for (arg, _) in fn_decl.args.items.iter() {
             let span = arg.span();
 
-            match arg {
-                ast::FnArg::Self_(s) => {
+            match &arg.ident {
+                ast::FnArgIdent::Self_(s) => {
                     if !instance_fn || !first {
                         return Err(CompileError::new(span, CompileErrorKind::UnsupportedSelf));
                     }
@@ -24,12 +24,12 @@ impl Compile<(ast::ItemFn, bool)> for Compiler<'_> {
                     let span = s.span();
                     self.scopes.new_var("self", span)?;
                 }
-                ast::FnArg::Ident(ident) => {
+                ast::FnArgIdent::Ident(ident) => {
                     let span = ident.span();
                     let name = ident.resolve(&self.storage, &*self.source)?;
                     self.scopes.new_var(name.as_ref(), span)?;
                 }
-                ast::FnArg::Ignore(ignore) => {
+                ast::FnArgIdent::Ignore(ignore) => {
                     let span = ignore.span();
                     self.scopes.decl_anon(span)?;
                 }

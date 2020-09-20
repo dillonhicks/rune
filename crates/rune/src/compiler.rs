@@ -316,14 +316,14 @@ where
     let mut args = Vec::new();
 
     for arg in arguments {
-        match arg {
-            ast::FnArg::Self_(..) => {
+        match &arg.ident {
+            ast::FnArgIdent::Self_(..) => {
                 args.push(String::from("self"));
             }
-            ast::FnArg::Ignore(..) => {
+            ast::FnArgIdent::Ignore(..) => {
                 args.push(String::from("_"));
             }
-            ast::FnArg::Ident(ident) => {
+            ast::FnArgIdent::Ident(ident) => {
                 args.push(ident.resolve(storage, source)?.to_string());
             }
         }

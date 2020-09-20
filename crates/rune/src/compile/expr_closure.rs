@@ -18,15 +18,15 @@ impl Compile<(ast::ExprClosure, &[CompileMetaCapture])> for Compiler<'_> {
             for (arg, _) in expr_closure.args.as_slice() {
                 let span = arg.span();
 
-                match arg {
-                    ast::FnArg::Self_(s) => {
+                match &arg.ident {
+                    ast::FnArgIdent::Self_(s) => {
                         return Err(CompileError::new(*s, CompileErrorKind::UnsupportedSelf))
                     }
-                    ast::FnArg::Ident(ident) => {
+                    ast::FnArgIdent::Ident(ident) => {
                         let ident = ident.resolve(&self.storage, &*self.source)?;
                         self.scopes.new_var(ident.as_ref(), span)?;
                     }
-                    ast::FnArg::Ignore(..) => {
+                    ast::FnArgIdent::Ignore(..) => {
                         // Ignore incoming variable.
                         let _ = self.scopes.decl_anon(span)?;
                     }

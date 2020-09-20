@@ -591,7 +591,7 @@ impl<'a> Lexer<'a> {
                         }
                         ('-', '>') => {
                             it.next();
-                            break ast::Kind::Arrow;
+                            break ast::Kind::RArrow;
                         }
                         ('-', c @ '0'..='9') => {
                             it.next();
