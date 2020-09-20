@@ -181,9 +181,15 @@ pub enum ParseErrorKind {
         /// The actual token.
         actual: ast::Kind,
     },
-    /// Expected a visibility specifier.
-    #[error("expected visibility specifier `pub`, `pub (in path)`, `pub(super)`, `pub(crate)`, or `crate` got `{actual}`")]
+    /// Expected a visibility level.
+    #[error("expected visibility level `pub`, `pub (in path)`, `pub(super)`, `pub(crate)`, or `crate` got `{actual}`")]
     ExpectedVisibility {
+        /// The actual token.
+        actual: ast::Kind,
+    },
+    /// Expected a mutability specifier.
+    #[error("expected mutability specifier `mut` or `const`")]
+    ExpectedMutability {
         /// The actual token.
         actual: ast::Kind,
     },

@@ -583,7 +583,13 @@ impl<'a> Lexer<'a> {
                         }
                         ('.', '.') => {
                             it.next();
-                            break ast::Kind::DotDot;
+                            let p3 = it.clone().next().map(|(_, c)| c);
+                            if matches!(p3, Some('.')) {
+                                it.next();
+                                break ast::Kind::Ellipsis;
+                            } else {
+                                break ast::Kind::DotDot;
+                            }
                         }
                         ('=', '>') => {
                             it.next();

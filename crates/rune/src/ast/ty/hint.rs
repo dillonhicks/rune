@@ -1,8 +1,8 @@
 use crate::ast;
-use crate::{Ast, Parse, Peek, Spanned, TokenStream};
+use crate::{Parse, Peek, Spanned, ToTokens};
 
 /// The type of a function argument, assignment, or expression
-#[derive(Debug, Clone, Ast, Spanned, Parse)]
+#[derive(Debug, Clone, ToTokens, Spanned, Parse)]
 pub struct TypeHint {
     /// The `:` token between ident and type
     pub colon: ast::Colon,

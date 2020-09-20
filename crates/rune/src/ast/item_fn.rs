@@ -1,18 +1,18 @@
 use crate::ast;
-use crate::{Ast, Parse, ParseError, Parser, Peek, Spanned};
+use crate::{Parse, ParseError, Parser, Peek, Spanned, ToTokens};
 use runestick::Span;
 
 /// A function.
-#[derive(Debug, Clone, Ast, Spanned)]
+#[derive(Debug, Clone, ToTokens, Spanned)]
 pub struct ItemFn {
     /// The attributes for the fn
-    #[spanned(iter)]
+    #[rune(iter)]
     pub attributes: Vec<ast::Attribute>,
     /// The visibility of the `fn` item
-    #[spanned(iter)]
+    #[rune(iter)]
     pub visibility: Option<ast::Visibility>,
     /// The optional `async` keyword.
-    #[spanned(iter)]
+    #[rune(iter)]
     pub async_: Option<ast::Async>,
     /// The `fn` token.
     pub fn_: ast::Fn,
@@ -22,7 +22,7 @@ pub struct ItemFn {
     // TODO: merge args and output into a signature
     pub args: ast::Parenthesized<ast::FnArg, ast::Comma>,
     /// The return type-hint
-    #[spanned(iter)]
+    #[rune(iter)]
     pub output: Option<ast::ReturnType>,
     /// The body of the function.
     pub body: ast::Block,

@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::{Ast, Parse, ParseError, ParseErrorKind, Parser, Peek, Spanned};
+use crate::{Parse, ParseError, ParseErrorKind, Parser, Spanned, ToTokens};
 
 /// A single argument in a closure.
 ///
@@ -13,15 +13,15 @@ use crate::{Ast, Parse, ParseError, ParseErrorKind, Parser, Peek, Spanned};
 /// assert!(arg.type_.is_some());
 ///
 /// ```
-#[derive(Debug, Clone, Ast, Spanned)]
+#[derive(Debug, Clone, ToTokens, Spanned)]
 pub struct FnArg {
     /// Attributes for the function argument
-    #[spanned(iter)]
+    #[rune(iter)]
     pub attributes: Vec<ast::Attribute>,
     /// Identifier for the function argument
     pub ident: FnArgIdent,
     /// Optional type of the function argument
-    #[spanned(iter)]
+    #[rune(iter)]
     pub type_: Option<ast::TypeHint>,
 }
 
@@ -57,7 +57,7 @@ impl Parse for FnArg {
 /// parse_all::<ast::FnArgIdent>("_").unwrap();
 /// parse_all::<ast::FnArgIdent>("abc").unwrap();
 /// ```
-#[derive(Debug, Clone, Ast, Spanned)]
+#[derive(Debug, Clone, ToTokens, Spanned)]
 pub enum FnArgIdent {
     /// The `self` parameter.
     Self_(ast::Self_),

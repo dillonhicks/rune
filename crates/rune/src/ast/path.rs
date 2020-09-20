@@ -1,23 +1,23 @@
 use crate::ast;
-use crate::{Ast, Parse, ParseError, ParseErrorKind, Parser, Peek, Resolve, Spanned, Storage};
+use crate::{Parse, ParseError, ParseErrorKind, Parser, Peek, Resolve, Spanned, Storage, ToTokens};
 use runestick::Source;
 use std::borrow::Cow;
 
 type PathSegments = Vec<(ast::Scope, ast::Ident)>;
 
 /// A path, where each element is separated by a `::`.
-#[derive(Debug, Clone, Ast, Spanned)]
+#[derive(Debug, Clone, ToTokens, Spanned)]
 pub struct Path {
     /// The optional leading colon `::`
-    #[spanned(iter)]
+    #[rune(iter)]
     pub leading_colon: Option<ast::Scope>,
     /// The first component in the path.
     pub first: ast::Ident,
     /// The rest of the components in the path.
-    #[spanned(iter)]
+    #[rune(iter)]
     pub rest: PathSegments,
     /// Trailing scope.
-    #[spanned(iter)]
+    #[rune(iter)]
     pub trailing: Option<ast::Scope>,
 }
 
@@ -49,7 +49,7 @@ impl Path {
 }
 
 impl Peek for Path {
-    fn peek(t1: Option<ast::Token>, _: Option<ast::Token>) -> bool {
+    fn peek(t1: Option<ast::Token>, _t2: Option<ast::Token>) -> bool {
         matches!(peek!(t1).kind, ast::Kind::Ident(..))
     }
 }

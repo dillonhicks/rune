@@ -58,6 +58,7 @@ mod lit_tuple;
 mod lit_unit;
 mod lit_vec;
 mod macro_call;
+mod mutability;
 mod parenthesized;
 mod pat;
 mod pat_object;
@@ -69,8 +70,6 @@ mod return_type;
 mod stmt;
 mod token;
 mod ty;
-mod ty_hint;
-mod ty_path;
 pub(super) mod utils;
 mod vis;
 mod vis_restricted;
@@ -132,6 +131,7 @@ pub use self::lit_tuple::LitTuple;
 pub use self::lit_unit::LitUnit;
 pub use self::lit_vec::LitVec;
 pub use self::macro_call::MacroCall;
+pub use self::mutability::Mutability;
 pub use self::parenthesized::Parenthesized;
 pub use self::pat::Pat;
 pub use self::pat_object::{PatObject, PatObjectItem};
@@ -145,9 +145,7 @@ pub use self::token::{
     CopySource, Delimiter, Kind, LitByteStrSource, LitByteStrSourceText, LitStrSource,
     LitStrSourceText, Number, NumberBase, NumberSource, NumberSourceText, StringSource, Token,
 };
-pub use self::ty::Type;
-pub use self::ty_hint::TypeHint;
-pub use self::ty_path::TypePath;
+pub use self::ty::{Type, TypeHint, TypeInfer, TypeNever, TypePath, TypePtr, TypeVariadic};
 pub use self::vis::Visibility;
 pub use self::vis_restricted::VisRestricted;
 
@@ -192,8 +190,8 @@ macro_rules! decl_tokens {
                 }
             }
 
-            impl crate::IntoTokens for $parser {
-                fn into_tokens(&self, _: &mut crate::MacroContext, stream: &mut crate::TokenStream) {
+            impl crate::ToTokens for $parser {
+                fn to_tokens(&self, _: &mut crate::MacroContext, stream: &mut crate::TokenStream) {
                     stream.push(self.token);
                 }
             }
@@ -254,6 +252,9 @@ decl_tokens! {
     (Super, "The `super` keyword.", Kind::Super),
     (Extern, "The `extern` keyword.", Kind::Extern),
     (RArrow, "The right arrow. `->`", Kind::RArrow),
+    (Const, "The `const` keyword.", Kind::Const),
+    (Mut, "The `mut` keyword.", Kind::Mut),
+    (Ellipsis, "The ellipsis `...`.", Kind::Ellipsis),
 }
 
 #[cfg(test)]

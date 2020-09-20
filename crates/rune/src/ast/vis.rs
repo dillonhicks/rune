@@ -1,8 +1,8 @@
 use crate::ast;
-use crate::{Ast, Parse, ParseError, ParseErrorKind, Parser, Peek, Spanned};
+use crate::{Parse, ParseError, ParseErrorKind, Parser, Peek, Spanned, ToTokens};
 
 /// Visibility level restricted to some path: pub(self) or pub(super) or pub(crate) or pub(in some::module).
-#[derive(Debug, Clone, Ast, Spanned)]
+#[derive(Debug, Clone, ToTokens, Spanned)]
 pub enum Visibility {
     /// A public visibility level: `pub`.
     Public(ast::Pub),

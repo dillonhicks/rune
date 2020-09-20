@@ -11,8 +11,8 @@ pub struct Token {
     pub kind: Kind,
 }
 
-impl crate::IntoTokens for Token {
-    fn into_tokens(&self, _: &mut MacroContext, stream: &mut crate::TokenStream) {
+impl crate::ToTokens for Token {
+    fn to_tokens(&self, _: &mut MacroContext, stream: &mut crate::TokenStream) {
         stream.push(*self);
     }
 }
@@ -226,6 +226,7 @@ kinds! {
     Colon, "`:`.",
     ColonColon, "`::`.",
     Comma, "`,`.",
+    Const, "`const`.",
     Crate, "The `crate` keyword.",
     Dash, "`-`.",
     DashEq, "`-=`.",
@@ -235,6 +236,7 @@ kinds! {
     Dollar, "`$`.",
     Dot, "`.`.",
     DotDot, "`..`.",
+    Ellipsis, "`...`.",
     Else, "The `else` keyword.",
     Enum, "The `enum` keyword.",
     Eq, "`=`.",
@@ -270,6 +272,7 @@ kinds! {
     Match, "The `match` keyword.",
     Mod, "The `mod` keyword.",
     Move, "The `move` keyword.",
+    Mut, "The `mut` keyword.",
     Not, "The `not` keyword.",
     OffsetOf, "The `offsetof` keyword.",
     Open(Delimiter), "An open delimiter: `(`, `{`, or `[`.",
@@ -323,6 +326,7 @@ impl Kind {
             "become" => Self::Become,
             "break" => Self::Break,
             "crate" => Self::Crate,
+            "const" => Self::Const,
             "default" => Self::Default,
             "do" => Self::Do,
             "else" => Self::Else,
@@ -342,6 +346,7 @@ impl Kind {
             "match" => Self::Match,
             "mod" => Self::Mod,
             "move" => Self::Move,
+            "mut" => Self::Mut,
             "not" => Self::Not,
             "offsetof" => Self::OffsetOf,
             "override" => Self::Override,
@@ -392,6 +397,7 @@ impl fmt::Display for Kind {
             Self::Colon => write!(f, ":")?,
             Self::ColonColon => write!(f, "::")?,
             Self::Comma => write!(f, ",")?,
+            Self::Const => write!(f, "const")?,
             Self::Crate => write!(f, "crate")?,
             Self::Dash => write!(f, "-")?,
             Self::DashEq => write!(f, "-=")?,
@@ -401,6 +407,7 @@ impl fmt::Display for Kind {
             Self::Dollar => write!(f, "$")?,
             Self::Dot => write!(f, ".")?,
             Self::DotDot => write!(f, "..")?,
+            Self::Ellipsis => write!(f, "...")?,
             Self::Else => write!(f, "else")?,
             Self::Enum => write!(f, "enum")?,
             Self::Eq => write!(f, "=")?,
@@ -436,6 +443,7 @@ impl fmt::Display for Kind {
             Self::Match => write!(f, "match")?,
             Self::Mod => write!(f, "mod")?,
             Self::Move => write!(f, "move")?,
+            Self::Mut => write!(f, "mut")?,
             Self::Not => write!(f, "not")?,
             Self::OffsetOf => write!(f, "offsetof")?,
             Self::Open(delimiter) => write!(f, "{}", delimiter.open())?,
@@ -481,8 +489,8 @@ impl fmt::Display for Kind {
     }
 }
 
-impl crate::IntoTokens for Kind {
-    fn into_tokens(&self, context: &mut crate::MacroContext, stream: &mut crate::TokenStream) {
+impl crate::ToTokens for Kind {
+    fn to_tokens(&self, context: &mut crate::MacroContext, stream: &mut crate::TokenStream) {
         stream.push(Token {
             kind: *self,
             span: context.default_span(),

@@ -1,8 +1,8 @@
 use crate::ast;
-use crate::{Ast, Parse, ParseError, ParseErrorKind, Parser, Peek, Spanned};
+use crate::{Parse, Peek, Spanned, ToTokens};
 
 /// The type of a funtion argument
-#[derive(Debug, Clone, Ast, Spanned, Parse)]
+#[derive(Debug, Clone, ToTokens, Spanned, Parse)]
 pub struct ReturnType {
     /// The `->` preceeding the type
     pub arrow: ast::RArrow,

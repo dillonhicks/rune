@@ -33,6 +33,18 @@ impl Compile<(&ast::ExprBinary, Needs)> for Compiler<'_> {
             return Ok(());
         }
 
+        if expr_binary.op.is_conditional() {
+            compile_conditional_binop(
+                self,
+                &*expr_binary.lhs,
+                &*expr_binary.rhs,
+                expr_binary.op,
+                needs,
+            )?;
+
+            return Ok(());
+        }
+
         // NB: need to declare these as anonymous local variables so that they
         // get cleaned up in case there is an early break (return, try, ...).
         self.compile((&*expr_binary.lhs, Needs::Value))?;
@@ -62,6 +74,7 @@ impl Compile<(&ast::ExprBinary, Needs)> for Compiler<'_> {
             ast::BinOp::BitOr => Inst::Op { op: InstOp::BitOr },
             ast::BinOp::Shl => Inst::Op { op: InstOp::Shl },
             ast::BinOp::Shr => Inst::Op { op: InstOp::Shr },
+
             op => {
                 return Err(CompileError::new(
                     span,
@@ -90,6 +103,45 @@ fn rhs_needs_of(op: ast::BinOp) -> Needs {
         ast::BinOp::Is | ast::BinOp::IsNot => Needs::Type,
         _ => Needs::Value,
     }
+}
+
+fn compile_conditional_binop(
+    this: &mut Compiler<'_>,
+    lhs: &ast::Expr,
+    rhs: &ast::Expr,
+    bin_op: ast::BinOp,
+    needs: Needs,
+) -> CompileResult<()> {
+    let span = lhs.span().join(rhs.span());
+
+    let end_label = this.asm.new_label("conditional_end");
+
+    this.compile((&*lhs, Needs::Value))?;
+
+    match bin_op {
+        ast::BinOp::And => {
+            this.asm.jump_if_not_or_pop(end_label, lhs.span());
+        }
+        ast::BinOp::Or => {
+            this.asm.jump_if_or_pop(end_label, lhs.span());
+        }
+        op => {
+            return Err(CompileError::new(
+                span,
+                CompileErrorKind::UnsupportedBinaryOp { op },
+            ));
+        }
+    }
+
+    this.compile((&*rhs, Needs::Value))?;
+
+    this.asm.label(end_label)?;
+
+    if !needs.value() {
+        this.asm.push(Inst::Pop, span);
+    }
+
+    Ok(())
 }
 
 fn compile_assign_binop(

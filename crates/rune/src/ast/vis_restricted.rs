@@ -1,16 +1,16 @@
 use crate::ast;
-use crate::{Ast, Parse, ParseError, Parser, Spanned};
+use crate::{Parse, Spanned, ToTokens};
 
 /// A visibility level restricted to some path: pub(self)
 /// or pub(super) or pub(crate) or pub(in some::module).
-#[derive(Debug, Clone, Ast, Spanned, Parse)]
+#[derive(Debug, Clone, ToTokens, Spanned, Parse)]
 pub struct VisRestricted {
     /// The `pub` keyword.
     pub pub_: ast::Pub,
     /// `(` to specify the start of the visibility scope.
     pub open: ast::OpenParen,
     /// Optional `in` keyword when specifying a path scope.
-    #[spanned(iter)]
+    #[rune(iter)]
     pub in_: Option<ast::In>,
     /// The path in which the `pub` applies.
     pub path: ast::Path,
