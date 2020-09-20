@@ -1,18 +1,18 @@
 use crate::ast;
-use crate::{Ast, Parse, ParseError, Parser, Peek, Spanned};
+use crate::{Parse, ParseError, Parser, Peek, Spanned, ToTokens};
 use runestick::Span;
 
 /// A function.
-#[derive(Debug, Clone, Ast, Spanned)]
+#[derive(Debug, Clone, ToTokens, Spanned)]
 pub struct ItemFn {
     /// The attributes for the fn
-    #[spanned(iter)]
+    #[rune(iter)]
     pub attributes: Vec<ast::Attribute>,
     /// The visibility of the `fn` item
     #[spanned(iter)]
     pub visibility: Option<ast::Visibility>,
     /// The optional `async` keyword.
-    #[spanned(iter)]
+    #[rune(iter)]
     pub async_: Option<ast::Async>,
     /// The `fn` token.
     pub fn_: ast::Fn,
