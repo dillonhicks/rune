@@ -140,6 +140,11 @@ impl Index<ast::ItemFn> for Indexer<'_> {
                 vis,
                 "function visibility levels are not supported",
             ));
+        } else if let Some(output) = &decl_fn.output {
+            return Err(CompileError::internal(
+                output,
+                "function return types are not supported",
+            ));
         }
 
         let is_toplevel = self.items.is_empty();
@@ -151,6 +156,12 @@ impl Index<ast::ItemFn> for Indexer<'_> {
         let guard = self.scopes.push_function(decl_fn.async_.is_some());
 
         for (arg, _) in &decl_fn.args.items {
+            if let Some(type_) = &arg.type_ {
+                return Err(CompileError::internal(
+                    type_,
+                    "function argument types are not supported",
+                ));
+            }
             match &arg.ident {
                 ast::FnArgIdent::Self_(s) => {
                     let span = s.span();
