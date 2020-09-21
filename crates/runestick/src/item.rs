@@ -13,6 +13,7 @@ const BLOCK: u8 = 1;
 const CLOSURE: u8 = 2;
 const ASYNC_BLOCK: u8 = 3;
 const MACRO: u8 = 4;
+const MANGELD: u8 = 4;
 
 /// The name of an item.
 ///

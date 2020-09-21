@@ -195,6 +195,7 @@ mod parser;
 mod query;
 mod quote;
 mod scopes;
+mod sec;
 mod source_loader;
 mod sources;
 mod storage;

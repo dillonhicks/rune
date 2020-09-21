@@ -44,6 +44,12 @@ impl Path {
             Some(&it.next()?.1)
         })
     }
+
+    pub fn iter<'a>(&'a self) -> impl 'a + Iterator<Item = &'a ast::Ident> {
+        Some(&self.first)
+            .into_iter()
+            .chain(self.rest.iter().map(|(_, i)| i))
+    }
 }
 
 impl Peek for Path {
