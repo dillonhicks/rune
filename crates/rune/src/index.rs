@@ -755,7 +755,7 @@ impl Index<ast::Item> for Indexer<'_> {
 
                 let mut guards = Vec::new();
 
-                for path_segment in item_impl.path.into_components() {
+                for path_segment in item_impl.path.iter() {
                     let ident_segment = path_segment
                         .try_as_ident()
                         .ok_or_else(|| CompileError::internal_unsupported_path(path_segment))?;

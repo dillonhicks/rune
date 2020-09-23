@@ -30,18 +30,11 @@ impl Path {
         }
     }
 
-    /// Iterate over all components in path.
-    pub fn into_components(&self) -> impl Iterator<Item = &'_ PathSegment> + '_ {
-        let mut first = Some(&self.first);
-        let mut it = self.rest.iter();
-
-        std::iter::from_fn(move || {
-            if let Some(first) = first.take() {
-                return Some(first);
-            }
-
-            Some(&it.next()?.1)
-        })
+    /// Iterate over the components of the path
+    pub fn iter<'a>(&'a self) -> impl 'a + Iterator<Item = &'a ast::PathSegment> {
+        Some(&self.first)
+            .into_iter()
+            .chain(self.rest.iter().map(|(_, i)| i))
     }
 }
 
