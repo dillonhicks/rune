@@ -46,6 +46,7 @@ impl Peek for Path {
 
 /// Part of a `::` separated path.
 ///
+///
 #[derive(Debug, Clone, ToTokens, Spanned)]
 pub enum PathSegment {
     /// A path segment that is an identifier.
@@ -54,13 +55,17 @@ pub enum PathSegment {
     Crate(ast::Crate),
     /// The `super` keyword use as a path segment.
     Super(ast::Super),
+    /// The `self` keyword used as a path segment: `self::foo`.
+    SelfValue(ast::Self_),
+    /// The `Self` keyword used as a path segment: `Self::Bar`.
+    SelfType(ast::SelfType),
 }
 
 impl PathSegment {
     /// Borrow as an identifier.
     ///
     /// This is only allowed if the PathSegment is `Ident(_)`
-    /// and not `Crate` or `Super`.
+    /// and not `Crate`, `Super`, `SelfValue`, or `SelfType`.
     pub fn try_as_ident(&self) -> Option<&ast::Ident> {
         if let PathSegment::Ident(ident) = self {
             Some(ident)
@@ -77,6 +82,8 @@ impl Parse for PathSegment {
             ast::Kind::Ident(_) => Ok(PathSegment::Ident(parser.parse()?)),
             ast::Kind::Crate => Ok(PathSegment::Crate(parser.parse()?)),
             ast::Kind::Super => Ok(PathSegment::Super(parser.parse()?)),
+            ast::Kind::Self_ => Ok(PathSegment::SelfValue(parser.parse()?)),
+            ast::Kind::SelfType => Ok(PathSegment::SelfType(parser.parse()?)),
             _ => {
                 return Err(ParseError::new(
                     token,

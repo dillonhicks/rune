@@ -248,6 +248,9 @@ decl_tokens! {
     (Crate, "The `crate` keyword.", Kind::Crate),
     (Super, "The `super` keyword.", Kind::Super),
     (Extern, "The `extern` keyword.", Kind::Extern),
+    (SelfType, "The `Self` keyword.", Kind::SelfType),
+    (Dyn, "The `dyn` keyword.", Kind::Dyn),
+    (Trait, "The `trait` keyword.", Kind::Trait),
 }
 
 #[cfg(test)]

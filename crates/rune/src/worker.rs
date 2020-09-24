@@ -379,6 +379,7 @@ impl Import {
             .try_as_ident()
             .ok_or_else(|| CompileError::internal_unsupported_path(&decl_use.first))?
             .resolve(storage, &*source)?;
+
         name.push(first.as_ref());
 
         let mut it = decl_use.rest.iter();

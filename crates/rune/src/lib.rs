@@ -194,6 +194,7 @@ mod macros;
 mod options;
 mod parse_error;
 mod parser;
+mod path_tree;
 mod query;
 mod quote;
 mod scopes;

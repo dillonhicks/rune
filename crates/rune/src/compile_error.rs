@@ -61,9 +61,17 @@ impl CompileError {
         CompileError::new(
             spanned,
             CompileErrorKind::Internal {
-                msg: "paths containing `crate` or `super` are not supported",
+                msg: "paths containing `crate`, `super`, `self`, or `Self`, are not supported",
             },
         )
+    }
+
+    /// An error raised during path resolution
+    pub fn unresolvable_path<S>(spanned: S, msg: &'static str) -> Self
+    where
+        S: Spanned,
+    {
+        CompileError::new(spanned, CompileErrorKind::UnresolvablePath { msg })
     }
 
     /// An error raised during constant computation.
@@ -419,7 +427,7 @@ pub enum CompileErrorKind {
         /// The item that didn't exist.
         item: Item,
     },
-    /// Trying to use a number as a tuple index for which it is not suported.
+    /// Trying to use a number as a tuple index for which it is not supported.
     #[error("unsupported tuple index `{number}`")]
     UnsupportedTupleIndex {
         /// The number that was an unsupported tuple index.
@@ -431,4 +439,7 @@ pub enum CompileErrorKind {
     /// Trying to process a cycle of constants.
     #[error("constant cycle detected")]
     ConstCycle,
+    /// Could not resolve a path due `msg`.
+    #[error("failed to resolve: {msg}")]
+    UnresolvablePath { msg: &'static str },
 }

@@ -1,5 +1,24 @@
+//! Visibility rules
+//!
+//! ```rust
+//! // file.rs
+//!
+//! mod a {
+//!     pub struct Foo;
+//!
+//! }
+//!
+//! mod b {
+//!    struct Bar;
+//!
+//! }
+//!
+//!
+//!
+//! ```
 use runestick::{Component, Item};
 
+#[derive(Copy, Clone, Debug)]
 pub(crate) enum Vis<'a> {
     None,
     Pub,
@@ -7,6 +26,18 @@ pub(crate) enum Vis<'a> {
     Crate,
     Path(&'a Item),
     // ...
+}
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) enum ComponentKind {
+    Struct,
+    Fn,
+    ImplFn,
+    StructField,
+    EnumVariant,
+    Enum,
+    Mod,
+    File,
 }
 
 fn paths_eq(
