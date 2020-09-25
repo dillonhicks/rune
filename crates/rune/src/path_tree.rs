@@ -4,7 +4,7 @@ use crate::worker::QualifiedPath;
 use crate::{Assembly, CompileError, CompileErrorKind, CompileVisitor};
 use crate::{CompileResult, Spanned};
 use runestick::{Inst, SourceId, Span};
-use std::borrow::Borrow;
+use std::borrow::{Borrow, Cow};
 use std::cell::{Cell, Ref, RefCell};
 use std::convert::TryFrom;
 use std::fmt;
@@ -18,7 +18,7 @@ type TreeUsize = u32;
 pub enum PathTreeError {
     /// Could not resolve a path due `msg`.
     #[error("failed to resolve: {msg}")]
-    UnresolvablePath { msg: &'static str },
+    UnresolvablePath { msg: Cow<'static, str> },
 
     /// There are too many Path Parts in the path tree.
     ///
@@ -32,8 +32,8 @@ impl PathTreeError {
             limit: TreeUsize::max_value(),
         }
     }
-    pub const fn unresolvable_path(msg: &'static str) -> Self {
-        Self::UnresolvablePath { msg }
+    pub fn unresolvable_path<S: Into<Cow<'static, str>>>(msg: S) -> Self {
+        Self::UnresolvablePath { msg: msg.into() }
     }
 }
 
@@ -260,6 +260,10 @@ impl PathRef {
         }
 
         None
+    }
+
+    pub fn super_(&self) -> Option<PathRef> {
+        self.parent_mod()
     }
 
     pub fn self_mod(&self) -> Option<PathRef> {
@@ -610,14 +614,15 @@ impl PathTree {
             break;
         }
 
-        if q_iter.next().is_some() || last.is_none() {
-            return Err(PathTreeError::UnresolvablePath {
-                msg: "could not resolve path",
-            });
+        if let Some(part) = q_iter.next() {
+            return Err(PathTreeError::unresolvable_path(format!(
+                "path resolution failed for {} at {}",
+                qualpath, part
+            )));
         }
 
-        last.ok_or_else(|| PathTreeError::UnresolvablePath {
-            msg: "could not resolve path",
+        last.ok_or_else(|| {
+            PathTreeError::unresolvable_path(format!("could not find path: {}", qualpath))
         })
     }
 
@@ -632,27 +637,41 @@ impl PathTree {
         &self,
         source: &QualifiedPath,
         target: &QualifiedPath,
-    ) -> Result<bool, PathTree> {
+    ) -> Result<bool, PathTreeError> {
         let target_path = self.find(target)?.resolve();
         let source_path = self.find(source)?.resolve();
 
-        match target_path.visibility() {
+        let is_visible = match target_path.visibility() {
             sec::None => false,
             sec::Crate => true,
             sec::Super => {
-                let supe = source.common_ancestor(target);
-                let supe_ref = self.find(&supe)?.resolve();
-                supe_ref
+                let super_ = target_path.parent_mod().ok_or_else(|| {
+                    PathTreeError::unresolvable_path(format!(
+                        "could not resolve `super` of {}",
+                        target
+                    ))
+                })?;
+
+                let super_qualpath = super_.qualified_path();
+                let ancestor_qualpath = source.common_ancestor(target);
+                // let ancestor_ref = self.find(&ancestor_qualpath)?.resolve();
+
+                (super_qualpath == ancestor_qualpath)
+                    || super_qualpath.is_ancestor_of(&ancestor_qualpath)
             }
             sec::Public => true,
-            sec::Private => target_path
-                .self_mod()
-                .and_then(|target| source_path.self_mod().map(|source| target == source))
-                .unwrap_or_default(),
+            sec::Private => {
+                let target_self = target_path.self_mod();
+                let source_self = source_path.self_mod();
+                match (source_self, target_self) {
+                    (Some(source), Some(target)) if source == target => true,
+                    _ => false,
+                }
+            }
             sec::Inherit => false,
-        }
+        };
 
-        Ok(false)
+        Ok(is_visible)
     }
 }
 
@@ -693,18 +712,27 @@ mod test {
     #[test]
     fn test_storage() -> Result<(), Box<dyn std::error::Error>> {
         let tree = PathTree::with_crate_name("foo");
-        let bar = tree.crate_().append_child("bar", PathKind::Mod)?;
+        let bar = tree
+            .crate_()
+            .append_child("bar", PathKind::Mod, sec::Super)?;
         for (ch, kind) in "ABCDEFGHI".chars().zip(
             [PathKind::Struct, PathKind::Enum]
                 .into_iter()
                 .copied()
                 .cycle(),
         ) {
-            bar.append_child(ch, kind)?;
+            bar.append_child(ch, kind, sec::Public)?;
         }
-        let bar = bar.append_child("baz", PathKind::Mod)?;
-        for name in ["Alpha", "Beta", "Delta", "Gamma"].iter() {
-            bar.append_child(name, PathKind::Struct)?;
+        let bar = bar.append_child("baz", PathKind::Mod, sec::Crate)?;
+        for (vis, name) in [
+            (sec::Private, "Alpha"),
+            (sec::Private, "Beta"),
+            (sec::Public, "Delta"),
+            (sec::Public, "Gamma"),
+        ]
+        .into_iter()
+        {
+            bar.append_child(name, PathKind::Struct, *vis)?;
         }
         println!("{:?}", tree);
 
