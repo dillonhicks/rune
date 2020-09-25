@@ -1,0 +1,89 @@
+mod crate_ {
+pub use json::*;
+
+
+pub mod z {
+mod x {
+ mod y {
+    struct Foo {
+        a,
+        b
+    }
+
+    enum Wave {
+        XRay,
+        Gamma
+    }
+
+    impl Wave {
+        fn is_gamma(self)  {
+            mod z {
+                const COW = 1;
+            }
+
+            struct Yes {
+                a, b
+            }
+            impl Yes {
+                fn no(self) {
+                    struct Maybe;
+                    impl Maybe {
+                        fn eh(self) {
+                            async {
+                                |x| { };
+
+
+                            }
+                        }
+                    }
+                }
+            }
+            const ZUUL = "nope";
+            match ZUUL {
+             1=> {},
+             "nope" => {}
+            }
+            ZUUL
+        }
+
+    }
+
+    struct A;
+    struct B;
+    struct C;
+
+    const THING = 3;
+    fn pancake() {
+       // DFSFS
+    }
+    use super::DFSFS;
+ }
+
+ const DFSFS = 1;
+}
+
+
+}
+
+use self::z::x::y::*;
+fn main() {
+    z::x::y::Wave::XRay.is_gamma();
+    println("Hello World");
+    z::x::y::pancake();
+    //let x = x::y::DFSFS;
+    println(`{z::x::DFSFS}`)
+}
+
+}
+
+
+fn main() {
+    use crate_::z::x::y::*;
+
+    crate_::main();
+
+    let yes = Foo {a: 1, b: 2};
+
+    let unicorn = 03214234;
+    let foo = 17;
+}

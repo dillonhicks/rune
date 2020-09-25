@@ -1,4 +1,5 @@
 use crate::ast;
+use crate::path_tree::PathTreeError;
 use crate::unit_builder::UnitBuilderError;
 use crate::{ParseError, ParseErrorKind, Spanned};
 use runestick::{CompileMeta, ConstValue, Item, SourceId, Span, TypeInfo, TypeOf};
@@ -64,14 +65,6 @@ impl CompileError {
                 msg: "paths containing `crate`, `super`, `self`, or `Self`, are not supported",
             },
         )
-    }
-
-    /// An error raised during path resolution
-    pub fn unresolvable_path<S>(spanned: S, msg: &'static str) -> Self
-    where
-        S: Spanned,
-    {
-        CompileError::new(spanned, CompileErrorKind::UnresolvablePath { msg })
     }
 
     /// An error raised during constant computation.
@@ -439,7 +432,11 @@ pub enum CompileErrorKind {
     /// Trying to process a cycle of constants.
     #[error("constant cycle detected")]
     ConstCycle,
-    /// Could not resolve a path due `msg`.
-    #[error("failed to resolve: {msg}")]
-    UnresolvablePath { msg: &'static str },
+    /// A bad path such as a module that does not exist or too many super/crate
+    /// keywords.
+    #[error("path resolution error: {err}")]
+    PathResolutionError {
+        /// The cause of the error
+        err: PathTreeError,
+    },
 }

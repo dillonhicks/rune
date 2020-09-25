@@ -1,63 +1,97 @@
 use crate::collections::HashMap;
+use crate::sec;
+use crate::worker::QualifiedPath;
 use crate::{Assembly, CompileError, CompileErrorKind, CompileVisitor};
 use crate::{CompileResult, Spanned};
 use runestick::{Inst, SourceId, Span};
-use std::cell::RefCell;
+use std::borrow::Borrow;
+use std::cell::{Cell, Ref, RefCell};
+use std::convert::TryFrom;
 use std::fmt;
 use std::rc::Rc;
+use thiserror::Error;
+
+type TreeUsize = u32;
+
+/// Error when using the path tree
+#[derive(Debug, Error)]
+pub enum PathTreeError {
+    /// Could not resolve a path due `msg`.
+    #[error("failed to resolve: {msg}")]
+    UnresolvablePath { msg: &'static str },
+
+    /// There are too many Path Parts in the path tree.
+    ///
+    #[error("too many paths: the number of paths would exceed the limit `{limit}`")]
+    TooManyPaths { limit: TreeUsize },
+}
+
+impl PathTreeError {
+    pub const fn too_many_paths() -> Self {
+        Self::TooManyPaths {
+            limit: TreeUsize::max_value(),
+        }
+    }
+    pub const fn unresolvable_path(msg: &'static str) -> Self {
+        Self::UnresolvablePath { msg }
+    }
+}
 
 /// The kind of scope
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum PathKind {
+    /// The root scope `::`.
+    Package,
     /// The crate scope
     Crate,
-    /// A file scope
+    /// A file
     File,
     /// A module scope
     Mod,
-    /// A struct or enum body scope,
-    StructOrEnumBody,
+    /// Use
+    Use(PathId),
+    /// A struct body
+    Struct,
+    /// An enum body
+    Enum,
+    /// type X = Y;
+    TypeAlias,
     /// An impl block scope
     Impl,
-    /// A function scope
+    /// A function
     Fn,
-    /// A macro scope
+    /// A const expression
+    Const,
+    /// A struct field
+    Field,
+    /// An enum variant
+    Variant,
+    /// A macro
     Macro,
-    /// A closure scope
+    /// A closure
     Closure,
-    /// An anonymous block scope
+    /// An anonymous block
     Block,
-    /// Marker
-    Anon,
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct PathPart {
-    parent: Option<std::num::NonZeroUsize>,
-    idx: usize,
-    name: String,
-    kind: PathKind,
-}
-
-impl PathPart {
+impl PathKind {
     pub(crate) fn is_crate(&self) -> bool {
-        if let PathKind::Crate = self.kind {
+        if let PathKind::Crate = self {
             true
         } else {
             false
         }
     }
 
-    pub(crate) fn is_struct_or_enum_body(&self) -> bool {
-        if let PathKind::StructOrEnumBody = self.kind {
-            true
-        } else {
-            false
+    pub(crate) fn is_struct_or_enum(&self) -> bool {
+        match self {
+            PathKind::Struct | PathKind::Enum => true,
+            _ => false,
         }
     }
 
     pub(crate) fn is_file(&self) -> bool {
-        if let PathKind::File = self.kind {
+        if let PathKind::File = self {
             true
         } else {
             false
@@ -65,7 +99,7 @@ impl PathPart {
     }
 
     pub(crate) fn is_closure(&self) -> bool {
-        if let PathKind::Closure = self.kind {
+        if let PathKind::Closure = self {
             true
         } else {
             false
@@ -73,7 +107,7 @@ impl PathPart {
     }
 
     pub(crate) fn is_block(&self) -> bool {
-        if let PathKind::Block = self.kind {
+        if let PathKind::Block = self {
             true
         } else {
             false
@@ -81,7 +115,7 @@ impl PathPart {
     }
 
     pub(crate) fn is_function(&self) -> bool {
-        if let PathKind::Fn = self.kind {
+        if let PathKind::Fn = self {
             true
         } else {
             false
@@ -89,11 +123,51 @@ impl PathPart {
     }
 
     pub(crate) fn is_module(&self) -> bool {
-        if let PathKind::Mod = self.kind {
-            true
-        } else {
-            false
+        match self {
+            PathKind::Mod | PathKind::Crate => true,
+            _ => false,
         }
+    }
+}
+
+#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(transparent)]
+pub(crate) struct PathId(TreeUsize);
+
+impl PathId {
+    pub const fn new(n: TreeUsize) -> Self {
+        Self(n)
+    }
+    pub const fn to_usize(self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl fmt::Debug for PathId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl fmt::Display for PathId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct PathPart {
+    id: PathId,
+    vis: sec::Visibility,
+    parent: Option<PathId>,
+    name: String,
+    kind: PathKind,
+    children: Vec<PathId>,
+}
+
+impl PathPart {
+    pub(crate) fn visibility(&self) -> sec::Visibility {
+        self.vis
     }
 
     /// Get the name of the scope
@@ -105,178 +179,536 @@ impl PathPart {
         self.kind
     }
 
-    pub(crate) fn parent(&self) -> Option<std::num::NonZeroUsize> {
+    pub(crate) fn parent(&self) -> Option<PathId> {
         self.parent
     }
 
-    pub(crate) fn idx(&self) -> usize {
-        self.idx
+    pub(crate) fn id(&self) -> PathId {
+        self.id
     }
+
+    pub(crate) fn append_child(&mut self, id: PathId) {
+        self.children.push(id)
+    }
+}
+
+macro_rules! deref {
+    ($self_:ident) => {
+        &(RefCell::borrow(&*($self_).tree.inner).storage[$self_.idx])
+    };
+}
+
+macro_rules! deref_mut {
+    ($self_:ident) => {
+        &mut (RefCell::borrow_mut(&*($self_).tree.inner).storage[$self_.idx])
+    };
 }
 
 #[derive(Clone)]
 pub(crate) struct PathRef {
     idx: usize,
-    path_stack: PathStack,
+    tree: PathTree,
+}
+
+impl std::cmp::PartialEq for PathRef {
+    fn eq(&self, other: &Self) -> bool {
+        self.idx.eq(&other.idx)
+    }
 }
 
 impl PathRef {
-    pub fn deref(&self) -> &PathPart {
-        &self.path_stack[self.idx]
+    pub fn append_child<S: ToString>(
+        &self,
+        name: S,
+        kind: PathKind,
+        vis: sec::Visibility,
+    ) -> Result<PathRef, PathTreeError> {
+        let child = self.tree.push(self.idx, name, kind, vis)?;
+        deref_mut!(self).append_child(PathId::new(child.idx as u32));
+        Ok(child)
     }
 
-    pub fn push_child<S: ToString>(&self, name: S, kind: PathKind) -> CompileResult<PathRef> {
-        Ok(self.path_stack.push(idx, name, kind))
-    }
-
-    pub fn push_sibling<S: ToString>(&self, name: S, kind: PathKind) -> CompileResult<PathRef> {
-        let parent = self.deref().parent().map(|n| n.get()).unwrap_or(0);
-        Ok(self.path_stack.push(parent, name, kind))
+    pub fn append_sibling<S: ToString>(
+        &self,
+        name: S,
+        kind: PathKind,
+    ) -> Result<PathRef, PathTreeError> {
+        let parent_idx = deref!(self).parent().map(PathId::to_usize).unwrap_or(0);
+        self.tree.push(parent_idx, name, kind, sec::None)
     }
 
     pub fn parent(&self) -> Option<PathRef> {
-        let parent_idx = self.deref().parent();
+        let parent_idx = deref!(self).parent();
         parent_idx
-            .map(|idx| idx.get())
-            .map(|idx| self.path_stack.)
+            .map(PathId::to_usize)
+            .filter(|idx| self.tree.get(*idx).is_some())
+            .map(|idx| PathRef {
+                idx,
+                tree: self.tree.clone(),
+            })
+    }
+
+    pub fn parent_mod(&self) -> Option<PathRef> {
+        let mut node = self.clone();
+
+        while let Some(parent) = node.parent() {
+            if parent.kind().is_module() {
+                return Some(parent);
+            }
+
+            node = parent.clone();
+        }
+
+        None
+    }
+
+    pub fn self_mod(&self) -> Option<PathRef> {
+        let mut node = Some(self.clone());
+
+        while let Some(next) = node {
+            if next.kind().is_module() {
+                return Some(next);
+            }
+
+            node = next.parent();
+        }
+
+        None
+    }
+
+    pub fn qualified_name(&self) -> String {
+        self.qualified_path().to_string()
+    }
+
+    pub fn qualified_path(&self) -> QualifiedPath {
+        let mut node = self.clone();
+        let mut parts = vec![deref!(node).name().to_string()];
+
+        while let Some(parent) = node.parent() {
+            parts.push(deref!(parent).name().to_string());
+            node = parent;
+        }
+        parts.reverse();
+        parts.into()
+    }
+
+    pub fn name(&self) -> String {
+        deref!(self).name().to_string()
+    }
+
+    pub fn kind(&self) -> PathKind {
+        deref!(self).kind()
+    }
+
+    pub fn visibility(&self) -> sec::Visibility {
+        deref!(self).visibility()
+    }
+
+    pub fn id(&self) -> PathId {
+        deref!(self).id()
+    }
+
+    pub fn resolve(&self) -> PathRef {
+        let mut node = self.clone();
+        while let PathKind::Use(id) = node.kind() {
+            let idx = id.to_usize();
+
+            if idx == 0 {
+                break;
+            }
+
+            node = PathRef {
+                idx,
+                tree: node.tree,
+            }
+        }
+
+        node
+    }
+
+    pub fn iter_children(cloned: Self) -> impl Iterator<Item = PathRef> {
+        let len = deref!(cloned).children.len();
+        (0..len).filter_map(move |idx| {
+            deref!(cloned)
+                .children
+                .get(idx)
+                .cloned()
+                .map(PathId::to_usize)
+                .map(|idx| PathRef {
+                    idx,
+                    tree: cloned.tree.clone(),
+                })
+        })
     }
 }
 
 impl fmt::Debug for PathRef {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.deref().fmt(f)
+        deref!(self).fmt(f)
     }
 }
 
 #[derive(Debug)]
 pub(crate) struct Inner {
-    path_stack: Vec<PathPart>,
+    storage: Vec<PathPart>,
+    current: usize,
 }
 
 impl Inner {
     pub fn with_crate_name<S: ToString>(name: S) -> Self {
         Inner {
-            path_stack: vec![PathPart {
+            storage: vec![
+                PathPart {
+                    parent: None,
+                    id: PathId::new(0),
+                    name: String::new(),
+                    kind: PathKind::Package,
+                    children: vec![PathId::new(1)],
+                    vis: sec::Public,
+                },
+                PathPart {
+                    parent: Some(PathId::new(0)),
+                    id: PathId::new(1),
+                    name: name.to_string(),
+                    kind: PathKind::Crate,
+                    children: vec![],
+                    vis: sec::Crate,
+                },
+            ],
+            current: 1,
+        }
+    }
+
+    pub fn empty() -> Self {
+        Inner {
+            storage: vec![PathPart {
                 parent: None,
-                idx: 0,
-                name: name.to_string(),
-                kind: PathKind::Crate,
+                id: PathId::new(0),
+                name: String::new(),
+                kind: PathKind::Package,
+                children: vec![],
+                vis: sec::Public,
             }],
+            current: 0,
         }
     }
 }
 
+impl std::ops::Index<usize> for Inner {
+    type Output = PathPart;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.storage[index]
+    }
+}
+
 #[derive(Clone, Debug)]
-pub struct PathStack {
+pub struct PathTree {
     inner: Rc<RefCell<Inner>>,
 }
 
-impl PathStack {
+impl PathTree {
+    const PACKAGE_IDX: usize = 0;
+    const CRATE_IDX: usize = 1;
+
+    /// Construct a new path tree with a root module/crate name.
     pub fn with_crate_name<S: ToString>(name: S) -> Self {
-        PathStack {
+        PathTree {
             inner: Rc::new(RefCell::new(Inner::with_crate_name(name))),
         }
+    }
+
+    /// Construct a new path tree with a root module/crate name.
+    pub fn empty() -> Self {
+        PathTree {
+            inner: Rc::new(RefCell::new(Inner::empty())),
+        }
+    }
+
+    pub(crate) fn get(&self, idx: usize) -> Option<PathRef> {
+        (&*self.inner).borrow().storage.get(idx).map(|_| PathRef {
+            idx,
+            tree: self.clone(),
+        })
     }
 
     /// Get the scope corresponding to `crate`
     pub(crate) fn crate_(&self) -> PathRef {
         PathRef {
-            idx: 0,
-            path_stack: self.clone(),
+            idx: Self::CRATE_IDX,
+            tree: self.clone(),
         }
     }
 
     /// Get the scope corresponding to `super`
-    pub(crate) fn super_<S: Spanned>(&self, span: S) -> CompileResult<PathRef> {
-        let idx = self
-            .inner
-            .borrow_mut()
-            .path_stack
-            .iter()
-            .rev()
-            .filter(PathPart::is_module)
-            .take(2)
-            .last()
-            .map(PathPart::idx)
+    pub(crate) fn super_(&self) -> Result<PathRef, PathTreeError> {
+        self.self_()
+            .ok()
+            .and_then(|p| p.parent_mod())
             .ok_or_else(|| {
-                CompileError::unresolvable_path(span, "there are too many leading `super` keywords")
-            })?;
-
-        Ok(PathRef {
-            idx,
-            path_stack: self.clone(),
-        })
-    }
-
-    pub(crate) fn get(&self, idx: usize) -> Option<PathRef> {
-        self.inner
+                PathTreeError::unresolvable_path("there are too many leading `super` keywords")
+            })
     }
 
     /// Get the scope corresponding to `self`, which should be the first module
     /// found when backwards walking the scopes.
-    pub(crate) fn self_(&self) -> CompileResult<PathRef> {
-        let idx = self
-            .inner
-            .borrow_mut()
-            .path_stack
-            .iter()
-            .rev()
-            .find(PathPart::is_module)
-            .map(|part| part.idx())
-            .ok_or_else(|| {
-                CompileError::unresolvable_path(span, "cannot resolve `self`, there are no modules")
-            })?;
-        Ok(PathRef {
-            idx,
-            path_stack: self.clone(),
+    pub(crate) fn self_(&self) -> Result<PathRef, PathTreeError> {
+        self.current().self_mod().ok_or_else(|| {
+            PathTreeError::unresolvable_path("could not determine context for `self`")
         })
     }
 
     /// Get the scope corresponding to `Self`
-    pub(crate) fn self_type(&self) -> CompileResult<PathRef> {
+    pub(crate) fn self_type(&self) -> Result<PathRef, PathTreeError> {
         let idx = self
             .inner
             .borrow_mut()
-            .path_stack
+            .storage
             .iter()
             .rev()
-            .find(PathPart::is_struct_or_enum_body)
-            .map(|part| part.idx())
-            .ok_or_else(|| CompileError::unresolvable_path(span, "unresolved import `Self`"))?;
+            .find(|p| p.kind().is_struct_or_enum())
+            .map(PathPart::id)
+            .map(PathId::to_usize)
+            .ok_or_else(|| PathTreeError::unresolvable_path("unresolved import `Self`"))?;
 
         Ok(PathRef {
             idx,
-            path_stack: self.clone(),
+            tree: self.clone(),
         })
     }
 
+    /// The lenght of a thing
     fn len(&self) -> usize {
-        self.inner.borrow().path_stack.len()
+        (&*self.inner).borrow().storage.len()
     }
 
-    fn push<S: ToString>(&self, parent: usize, name: S, kind: PathKind) -> PathRef {
+    fn push<S: ToString>(
+        &self,
+        parent_idx: usize,
+        name: S,
+        kind: PathKind,
+        vis: sec::Visibility,
+    ) -> Result<PathRef, PathTreeError> {
         let idx = self.len();
-        self.inner.borrow_mut().path_stack.push(PathPart {
-            parent: std::num::NonZeroUsize::new(parent),
-            idx,
+        let id = TreeUsize::try_from(idx)
+            .map(PathId::new)
+            .map_err(|_| PathTreeError::too_many_paths())?;
+        let parent = TreeUsize::try_from(parent_idx)
+            .map(PathId::new)
+            .map_err(|_| PathTreeError::too_many_paths())?;
+
+        self.inner.borrow_mut().storage.push(PathPart {
+            parent: Some(parent),
+            id,
             name: name.to_string(),
             kind,
+            children: vec![],
+            vis,
         });
 
-        PathRef {
+        Ok(PathRef {
             idx,
-            path_stack: self.clone(),
+            tree: self.clone(),
+        })
+    }
+
+    pub(crate) fn push_scoped<S: ToString>(
+        &self,
+        name: S,
+        kind: PathKind,
+        vis: sec::Visibility,
+    ) -> Result<Guard, PathTreeError> {
+        let current_idx = (&*self.inner).borrow().current;
+
+        let path_ref = PathRef {
+            idx: current_idx,
+            tree: self.clone(),
         }
+        .append_child(name, kind, vis)?;
+
+        self.inner.borrow_mut().current = path_ref.idx;
+        Ok(Guard { path_ref })
+    }
+
+    pub fn fmt_list(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for path_ref in self.iter_refs() {
+            writeln!(
+                f,
+                "{:<4} {:<10} {:<16} -> {}",
+                path_ref.id(),
+                format!("{:?}", path_ref.visibility()),
+                format!("{:?}", path_ref.kind()),
+                path_ref.qualified_name(),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn iter_refs(&self) -> impl Iterator<Item = PathRef> {
+        let cloned = self.clone();
+        let len = self.len();
+        (0..len).map(move |idx| PathRef {
+            idx,
+            tree: cloned.clone(),
+        })
+    }
+
+    fn pop(&self) -> Option<PathRef> {
+        let idx: usize = (&*self.inner).borrow().current;
+        let parent_idx = &(&*self.inner).borrow().storage[idx]
+            .parent()
+            .map(PathId::to_usize);
+        match parent_idx {
+            Some(parent_idx) => {
+                self.inner.borrow_mut().current = *parent_idx;
+                Some(PathRef {
+                    idx,
+                    tree: self.clone(),
+                })
+            }
+            None => None,
+        }
+    }
+
+    pub(crate) fn cloned(other: &Self) -> Self {
+        PathTree {
+            inner: Rc::new(RefCell::new(Inner {
+                storage: (&*other.inner).borrow().storage.clone(),
+                current: (&*other.inner).borrow().current,
+            })),
+        }
+    }
+
+    pub fn tree_formatter(&self) -> TreeFormatter<'_> {
+        TreeFormatter(self)
+    }
+
+    pub(crate) fn find(&self, qualpath: &QualifiedPath) -> Result<PathRef, PathTreeError> {
+        let mut q_iter = qualpath.iter().filter(|s| !s.is_empty());
+        let mut current = self.get(0).unwrap();
+        let mut last: Option<PathRef> = None;
+
+        'depth: loop {
+            let qualpart = if let Some(qualpart) = q_iter.next() {
+                qualpart
+            } else {
+                break 'depth;
+            };
+
+            'breadth: for path_ref in PathRef::iter_children(current.clone()) {
+                println!("{} == {}?", path_ref.name(), qualpart.as_str());
+                if path_ref.name() == qualpart.as_str() {
+                    current = path_ref;
+                    last = Some(current.clone());
+                    continue 'depth;
+                } else {
+                    last = None;
+                    continue 'breadth;
+                }
+            }
+
+            break;
+        }
+
+        if q_iter.next().is_some() || last.is_none() {
+            return Err(PathTreeError::UnresolvablePath {
+                msg: "could not resolve path",
+            });
+        }
+
+        last.ok_or_else(|| PathTreeError::UnresolvablePath {
+            msg: "could not resolve path",
+        })
+    }
+
+    pub(crate) fn current(&self) -> PathRef {
+        PathRef {
+            idx: (&*self.inner).borrow().current,
+            tree: self.clone(),
+        }
+    }
+
+    pub(crate) fn is_visible_to(
+        &self,
+        source: &QualifiedPath,
+        target: &QualifiedPath,
+    ) -> Result<bool, PathTree> {
+        let target_path = self.find(target)?.resolve();
+        let source_path = self.find(source)?.resolve();
+
+        match target_path.visibility() {
+            sec::None => false,
+            sec::Crate => true,
+            sec::Super => {
+                let supe = source.common_ancestor(target);
+                let supe_ref = self.find(&supe)?.resolve();
+                supe_ref
+            }
+            sec::Public => true,
+            sec::Private => target_path
+                .self_mod()
+                .and_then(|target| source_path.self_mod().map(|source| target == source))
+                .unwrap_or_default(),
+            sec::Inherit => false,
+        }
+
+        Ok(false)
+    }
+}
+
+pub(crate) struct Guard {
+    path_ref: PathRef,
+}
+
+impl std::ops::Deref for Guard {
+    type Target = PathTree;
+
+    fn deref(&self) -> &Self::Target {
+        &self.path_ref.tree
+    }
+}
+
+impl std::ops::Drop for Guard {
+    fn drop(&mut self) {
+        if let Some(dropped) = self.path_ref.tree.pop() {
+            assert_eq!(dropped.idx, self.path_ref.idx, "path tree was corrupted");
+        } else {
+            panic!("path tree was corrupted");
+        }
+    }
+}
+
+pub struct TreeFormatter<'a>(&'a PathTree);
+
+impl fmt::Display for TreeFormatter<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt_list(f)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use super::PathStack;
+    use super::*;
 
     #[test]
-    fn test_path_stack() {
-        let stack = PathStack::with_crate_name("foo");
-        println!("{:?}", stack)
+    fn test_storage() -> Result<(), Box<dyn std::error::Error>> {
+        let tree = PathTree::with_crate_name("foo");
+        let bar = tree.crate_().append_child("bar", PathKind::Mod)?;
+        for (ch, kind) in "ABCDEFGHI".chars().zip(
+            [PathKind::Struct, PathKind::Enum]
+                .into_iter()
+                .copied()
+                .cycle(),
+        ) {
+            bar.append_child(ch, kind)?;
+        }
+        let bar = bar.append_child("baz", PathKind::Mod)?;
+        for name in ["Alpha", "Beta", "Delta", "Gamma"].iter() {
+            bar.append_child(name, PathKind::Struct)?;
+        }
+        println!("{:?}", tree);
+
+        println!("{}", TreeFormatter(&tree));
+        Ok(())
     }
 }

@@ -7,7 +7,9 @@ use crate::index::{Index as _, Indexer};
 use crate::index_scopes::IndexScopes;
 use crate::items::Items;
 use crate::macros::MacroCompiler;
+use crate::path_tree::{PathId, PathKind};
 use crate::query::Query;
+use crate::sec;
 use crate::CompileResult;
 use crate::{
     CompileError, CompileErrorKind, CompileVisitor, Errors, LoadError, MacroContext, Options,
@@ -16,6 +18,7 @@ use crate::{
 use runestick::{Component, Context, Item, Source, SourceId, Span};
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::fmt;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -328,6 +331,108 @@ pub(crate) enum Expanded {
     Expr(ast::Expr),
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct QualifiedPath(Vec<String>);
+
+impl QualifiedPath {
+    pub fn new<S: ToString>(root: S) -> Self {
+        QualifiedPath::from(vec![root.to_string()])
+    }
+
+    pub fn push(&mut self, s: String) {
+        self.0.push(s)
+    }
+
+    pub fn pop(&mut self) -> Option<String> {
+        self.0.pop()
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, String> {
+        self.0.iter()
+    }
+
+    pub fn last(&self) -> Option<&'_ String> {
+        self.0.last()
+    }
+
+    pub fn first(&self) -> Option<&'_ String> {
+        self.0.first()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn is_ancestor_of(&self, other: &QualifiedPath) -> bool {
+        (self.len() < other.len()) && (&self.0[..]) == (&other.0[..])
+    }
+
+    pub fn is_super_of(&self, other: &QualifiedPath) -> bool {
+        (self.len() == (other.len() - 1)) && (&self.0[..]) == (&other.0[..])
+    }
+
+    pub fn common_ancestor(&self, other: &QualifiedPath) -> QualifiedPath {
+        let parts = self
+            .iter()
+            .zip(other.iter())
+            .take_while(|(a, b)| a.eq(b))
+            .map(|(a, b)| a.clone())
+            .collect::<Vec<_>>();
+
+        QualifiedPath::from(parts)
+    }
+}
+
+impl std::convert::From<Vec<String>> for QualifiedPath {
+    fn from(inner: Vec<String>) -> Self {
+        QualifiedPath(inner)
+    }
+}
+
+impl fmt::Display for QualifiedPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.join("::"))
+    }
+}
+
+impl<'a> std::convert::From<&'a Item> for QualifiedPath {
+    fn from(item: &Item) -> Self {
+        let mut qualpath = QualifiedPath::default();
+
+        for c in item.iter() {
+            match c {
+                Component::String(s) => {
+                    qualpath.push(s.to_string());
+                }
+                Component::Block(idx)
+                | Component::Closure(idx)
+                | Component::AsyncBlock(idx)
+                | Component::Macro(idx) => {
+                    qualpath.push(idx.to_string());
+                }
+            }
+        }
+
+        qualpath
+    }
+}
+
+impl std::iter::IntoIterator for QualifiedPath {
+    type Item = String;
+    type IntoIter = <Vec<String> as std::iter::IntoIterator>::IntoIter;
+
+    fn into_iter(mut self) -> Self::IntoIter {
+        // TODO: This has to be here to to filter the empty root "":: path
+        //   - or imports will fail.
+        self.0.retain(|s| !s.is_empty());
+        self.0.into_iter()
+    }
+}
+
 /// Indexing to process.
 #[derive(Debug)]
 pub(crate) struct Index {
@@ -353,6 +458,9 @@ pub(crate) struct Import {
     pub(crate) ast: ast::ItemUse,
     pub(crate) source: Arc<Source>,
     pub(crate) source_id: usize,
+    pub(crate) qualified_path: QualifiedPath,
+    pub(crate) items: Items,
+    pub(crate) path_ref_id: usize,
 }
 
 impl Import {
@@ -368,38 +476,24 @@ impl Import {
             ast: decl_use,
             source,
             source_id,
+            qualified_path,
+            items,
+            path_ref_id,
         } = self;
 
         let span = decl_use.span();
 
-        let mut name = Item::new();
+        let item_qualpath = QualifiedPath::from(&item);
+        println!(">>>>>>> {:?}", item_qualpath);
 
-        let first = decl_use
-            .first
-            .try_as_ident()
-            .ok_or_else(|| CompileError::internal_unsupported_path(&decl_use.first))?
-            .resolve(storage, &*source)?;
+        let item_ref = items.get(path_ref_id).expect("could not resolve path");
+        println!(">>>>>>> {:?}", item_ref);
 
-        name.push(first.as_ref());
+        let mut name = Item::of(QualifiedPath::into_iter(qualified_path.clone()));
+        println!(">>>>>>> {:?}", name.iter().collect::<Vec<_>>());
+        println!(">>>>>>> {:?}", qualified_path);
 
-        let mut it = decl_use.rest.iter();
-        let last = it.next_back();
-
-        for (_, c) in it {
-            match c {
-                ast::ItemUseComponent::Wildcard(t) => {
-                    return Err(CompileError::new(t, CompileErrorKind::UnsupportedWildcard));
-                }
-                ast::ItemUseComponent::PathSegment(segment) => {
-                    let ident = segment
-                        .try_as_ident()
-                        .ok_or_else(|| CompileError::internal_unsupported_path(segment))?;
-                    name.push(ident.resolve(storage, &*source)?.as_ref());
-                }
-            }
-        }
-
-        if let Some((_, c)) = last {
+        if let Some((_, c)) = decl_use.rest.iter().next_back() {
             match c {
                 ast::ItemUseComponent::Wildcard(..) => {
                     let mut new_names = Vec::new();
@@ -415,8 +509,37 @@ impl Import {
                         .iter_components(&name)
                         .chain(unit.iter_components(&name));
 
-                    for c in iter {
+                    'components: for c in iter {
+                        let mut qualpath = qualified_path.clone();
+                        match &c {
+                            Component::String(n) => {
+                                qualpath.push(c.to_string());
+                                let (vis, kind) = items
+                                    .find(&qualpath)
+                                    .map(|p| (p.visibility(), PathKind::Use(p.id())))
+                                    .map_err(|_| {
+                                        println!("Error Resolving: {:?}", qualpath);
+                                    })
+                                    .unwrap_or((sec::Public, PathKind::Use(PathId::new(0))));
+
+                                if let sec::Private = vis {
+                                    log::debug!("Skip import of {:?} item {}", vis, qualpath);
+                                    continue 'components;
+                                }
+
+                                item_ref
+                                    .append_child(
+                                        qualpath.last().unwrap(),
+                                        kind,
+                                        (&decl_use.visibility).into(),
+                                    )
+                                    .expect("could not reslove path");
+                            }
+                            _ => {}
+                        }
+
                         let mut name = name.clone();
+
                         name.push(c);
                         new_names.push(name);
                     }
@@ -424,16 +547,51 @@ impl Import {
                     for name in new_names {
                         unit.new_import(item.clone(), &name, span, source_id)?;
                     }
+                    items.print_tree();
                 }
                 ast::ItemUseComponent::PathSegment(segment) => {
-                    let ident = segment
-                        .try_as_ident()
-                        .ok_or_else(|| CompileError::internal_unsupported_path(segment))?;
-                    name.push(ident.resolve(storage, &*source)?.as_ref());
+                    // let ident = segment
+                    //     .try_as_ident()
+                    //     .ok_or_else(|| CompileError::internal_unsupported_path(segment))?;
+                    //
+                    // let ident = ident.resolve(storage, &*source)?;
+
+                    let kind = items
+                        .find(&qualified_path)
+                        .map(|p| PathKind::Use(p.id()))
+                        .map_err(|_| {
+                            println!("Error Resolving: {:?}", qualified_path);
+                        })
+                        .unwrap_or(PathKind::Use(PathId::new(0)));
+
+                    item_ref
+                        .append_child(
+                            qualified_path.last().unwrap(),
+                            kind,
+                            (&decl_use.visibility).into(),
+                        )
+                        .expect("could not reslove path");
+                    items.print_tree();
                     unit.new_import(item, &name, span, source_id)?;
                 }
             }
         } else {
+            let kind = items
+                .find(&qualified_path)
+                .map(|p| PathKind::Use(p.id()))
+                .map_err(|_| {
+                    println!("Error Resolving: {:?}", qualified_path);
+                })
+                .unwrap_or(PathKind::Use(PathId::new(0)));
+
+            item_ref
+                .append_child(
+                    qualified_path.last().unwrap(),
+                    kind,
+                    (&decl_use.visibility).into(),
+                )
+                .expect("could not reslove path");
+            items.print_tree();
             unit.new_import(item, &name, span, source_id)?;
         }
 

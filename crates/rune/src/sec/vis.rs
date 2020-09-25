@@ -19,6 +19,26 @@
 use runestick::{Component, Item};
 
 #[derive(Copy, Clone, Debug)]
+pub(crate) enum Visibility {
+    None,
+    Crate,
+    Super,
+    Public,
+    Private,
+    Inherit,
+}
+
+impl From<&'_ crate::ast::Visibility> for Visibility {
+    fn from(vis: &crate::ast::Visibility) -> Self {
+        match vis {
+            crate::ast::Visibility::Public(_) => Self::Public,
+            crate::ast::Visibility::Restricted(_restrict) => Self::Public,
+            crate::ast::Visibility::Inherited => Self::Private,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
 pub(crate) enum Vis<'a> {
     None,
     Pub,

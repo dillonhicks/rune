@@ -3,8 +3,10 @@ use crate::collections::HashMap;
 use crate::eval::Used;
 use crate::index_scopes::IndexScopes;
 use crate::items::Items;
+use crate::path_tree::PathTree;
 use crate::query::{Build, BuildEntry, Function, Indexed, IndexedEntry, InstanceFunction, Query};
-use crate::worker::{Import, LoadFileKind, Macro, MacroKind, Task};
+use crate::sec;
+use crate::worker::{Import, LoadFileKind, Macro, MacroKind, QualifiedPath, Task};
 use crate::CompileResult;
 use crate::{
     CompileError, CompileErrorKind, CompileVisitor, OptionSpanned as _, Resolve as _, SourceLoader,
@@ -60,7 +62,8 @@ impl<'a> Indexer<'a> {
     pub(crate) fn handle_file_mod(&mut self, item_mod: &ast::ItemMod) -> CompileResult<()> {
         let span = item_mod.span();
         let name = item_mod.name.resolve(&self.storage, &*self.source)?;
-        let _guard = self.items.push_name(name.as_ref());
+        let vis = (&item_mod.visibility).into();
+        let _guard = self.items.push_mod(name.as_ref(), vis);
 
         let root = match &self.root {
             Some(root) => root,
@@ -136,16 +139,13 @@ impl Index<ast::ItemFn> for Indexer<'_> {
                 first,
                 "function attributes are not supported",
             ));
-        } else if !decl_fn.visibility.is_inherited() {
-            return Err(CompileError::internal(
-                &decl_fn.visibility.option_span().unwrap(),
-                "function visibility levels are not supported",
-            ));
         }
 
         let is_toplevel = self.items.is_empty();
         let name = decl_fn.name.resolve(&self.storage, &*self.source)?;
-        let _guard = self.items.push_name(name.as_ref());
+        let _guard = self
+            .items
+            .push_fn(name.as_ref(), (&decl_fn.visibility).into());
 
         let item = self.items.item();
 
@@ -628,18 +628,50 @@ impl Index<ast::Item> for Indexer<'_> {
                         first,
                         "use attributes are not supported",
                     ));
-                } else if !import.visibility.is_inherited() {
-                    return Err(CompileError::internal(
-                        &import.visibility.option_span().unwrap(),
-                        "use visibility levels are not supported",
-                    ));
                 }
+
+                let mut qualified_path = match &import.first {
+                    ast::PathSegment::Ident(ident) => {
+                        QualifiedPath::new(ident.resolve(&self.storage, &*self.source)?.as_ref())
+                    }
+                    ast::PathSegment::Crate(_) => QualifiedPath::new(self.items.crate_()),
+                    ast::PathSegment::Super(_) => self.items.super_().map_err(|err| {
+                        CompileError::new(&import, CompileErrorKind::PathResolutionError { err })
+                    })?,
+                    ast::PathSegment::SelfValue(_) => self.items.self_().map_err(|err| {
+                        CompileError::new(&import, CompileErrorKind::PathResolutionError { err })
+                    })?,
+                    ast::PathSegment::SelfType(_) => {
+                        return Err(CompileError::internal_unsupported_path(&import.first))
+                    }
+                };
+
+                let mut it = import.rest.iter();
+
+                for (_, c) in it {
+                    match c {
+                        ast::ItemUseComponent::Wildcard(t) => {}
+                        ast::ItemUseComponent::PathSegment(segment) => {
+                            let ident = segment
+                                .try_as_ident()
+                                .ok_or_else(|| CompileError::internal_unsupported_path(segment))?;
+                            let name = ident.resolve(&self.storage, &*self.source)?.to_string();
+
+                            qualified_path.push(name.clone());
+                        }
+                    }
+                }
+
+                println!("{}", qualified_path);
 
                 self.queue.push_back(Task::Import(Import {
                     item: self.items.item(),
                     ast: import.clone(),
                     source: self.source.clone(),
                     source_id: self.source_id,
+                    qualified_path,
+                    items: self.items.clone(),
+                    path_ref_id: self.items.current().id().to_usize(),
                 }));
             }
             ast::Item::ItemEnum(item_enum) => {
@@ -648,15 +680,12 @@ impl Index<ast::Item> for Indexer<'_> {
                         first,
                         "enum attributes are not supported",
                     ));
-                } else if !item_enum.visibility.is_inherited() {
-                    return Err(CompileError::internal(
-                        &item_enum.visibility.option_span().unwrap(),
-                        "enum visibility levels are not supported",
-                    ));
                 }
 
                 let name = item_enum.name.resolve(&self.storage, &*self.source)?;
-                let _guard = self.items.push_name(name.as_ref());
+                let _guard = self
+                    .items
+                    .push_enum(name.as_ref(), (&item_enum.visibility).into());
 
                 let span = item_enum.span();
                 let enum_item = self.items.item();
@@ -693,7 +722,7 @@ impl Index<ast::Item> for Indexer<'_> {
 
                     let span = name.span();
                     let name = name.resolve(&self.storage, &*self.source)?;
-                    let _guard = self.items.push_name(name.as_ref());
+                    let _guard = self.items.push_variant(name.as_ref(), sec::Inherit);
 
                     self.query.index_variant(
                         self.items.item(),
@@ -711,11 +740,6 @@ impl Index<ast::Item> for Indexer<'_> {
                         first,
                         "struct attributes are not supported",
                     ));
-                } else if !item_struct.visibility.is_inherited() {
-                    return Err(CompileError::internal(
-                        &item_struct.visibility.option_span().unwrap(),
-                        "struct visibility levels are not supported",
-                    ));
                 }
 
                 for field in item_struct.body.fields() {
@@ -724,16 +748,20 @@ impl Index<ast::Item> for Indexer<'_> {
                             first,
                             "field attributes are not supported",
                         ));
-                    } else if !field.visibility.is_inherited() {
-                        return Err(CompileError::internal(
-                            &field.visibility.option_span().unwrap(),
-                            "field visibility levels are not supported",
-                        ));
                     }
                 }
 
                 let ident = item_struct.ident.resolve(&self.storage, &*self.source)?;
-                let _guard = self.items.push_name(ident.as_ref());
+                let _guard = self
+                    .items
+                    .push_struct(ident.as_ref(), (&item_struct.visibility).into());
+                for field in item_struct.body.fields() {
+                    let field_ident = field.name.resolve(&self.storage, &*self.source)?;
+
+                    let _guard = self
+                        .items
+                        .push_field(field_ident.as_ref(), (&field.visibility).into());
+                }
 
                 self.query.index_struct(
                     self.items.item(),
@@ -760,7 +788,7 @@ impl Index<ast::Item> for Indexer<'_> {
                         .try_as_ident()
                         .ok_or_else(|| CompileError::internal_unsupported_path(path_segment))?;
                     let ident = ident_segment.resolve(&self.storage, &*self.source)?;
-                    guards.push(self.items.push_name(ident.as_ref()));
+                    guards.push(self.items.push_impl(ident.as_ref(), sec::Public));
                 }
 
                 self.impl_items.push(self.items.item());
@@ -777,11 +805,6 @@ impl Index<ast::Item> for Indexer<'_> {
                         first,
                         "module attributes are not supported",
                     ));
-                } else if !item_mod.visibility.is_inherited() {
-                    return Err(CompileError::internal(
-                        &item_mod.visibility.option_span().unwrap(),
-                        "module visibility levels are not supported",
-                    ));
                 }
 
                 match &item_mod.body {
@@ -790,7 +813,9 @@ impl Index<ast::Item> for Indexer<'_> {
                     }
                     ast::ItemModBody::InlineBody(body) => {
                         let name = item_mod.name.resolve(&self.storage, &*self.source)?;
-                        let _guard = self.items.push_name(name.as_ref());
+                        let _guard = self
+                            .items
+                            .push_mod(name.as_ref(), (&item_mod.visibility).into());
                         self.index(&*body.file)?;
                     }
                 }
@@ -805,7 +830,7 @@ impl Index<ast::Item> for Indexer<'_> {
 
                 let span = item_const.span();
                 let name = item_const.name.resolve(&self.storage, &*self.source)?;
-                let _guard = self.items.push_name(name.as_ref());
+                let _guard = self.items.push_const(name.as_ref(), sec::None);
 
                 self.query.index_const(
                     self.items.item(),
